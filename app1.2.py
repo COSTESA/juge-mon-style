@@ -11,7 +11,7 @@ import re
 import base64
 
 import streamlit as st
-from PIL import Image
+from PIL import Image, ImageOps
 from openai import OpenAI
 
 
@@ -128,10 +128,10 @@ except Exception:
 #  SECTION 3 — FONCTIONS UTILITAIRES
 # ══════════════════════════════════════════════════════════════════════════════
 
-def compress_image_to_base64(pil_image, max_dimension=1024, quality=85):
+def compress_image_to_base64(pil_image, max_dimension=768, quality=80):
     """
-    Prépare l'image pour l'API Vision haute définition.
-    max_dimension=1024 + quality=85 + detail='high' → analyse fine des matières et coutures.
+    Prépare l'image. Dimension réduite à 768px pour diviser le coût des tokens
+    en input par 2, tout en gardant la qualité nécessaire pour le détail des matières.
     Coût estimé ~765 tokens/image (vs 85 en low) — justifié pour l'analyse premium.
     """
     img = pil_image.copy()
@@ -1255,7 +1255,12 @@ intention = st.text_input(
 
 if has_a:
     image_a = Image.open(uploaded_a)
-    image_b = Image.open(uploaded_b) if has_b else None
+    image_a = ImageOps.exif_transpose(image_a)
+
+    image_b = None
+    if has_b:
+        image_b = Image.open(uploaded_b)
+        image_b = ImageOps.exif_transpose(image_b)
 
     # Aperçu
     st.markdown("")
