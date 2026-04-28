@@ -1,7 +1,7 @@
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║               🔥  JUGE MON STYLE  —  app.py                     ║
-║   Analyse vestimentaire IA · Contexte · Chain of Thought        ║
+║          ✦  MON STYLISTE DE POCHE  —  app.py                    ║
+║   Analyse vestimentaire IA · Premium · Smart Friend             ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -16,12 +16,12 @@ from openai import OpenAI
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 0 — CONFIG PAGE  (doit être le 1er appel Streamlit)
+#  SECTION 0 — CONFIG PAGE
 # ══════════════════════════════════════════════════════════════════════════════
 
 st.set_page_config(
-    page_title="Juge Mon Style 📸",
-    page_icon="🔥",
+    page_title="Juge Mon Style",
+    page_icon="✦",
     layout="centered",
     initial_sidebar_state="collapsed",
 )
@@ -31,119 +31,82 @@ st.set_page_config(
 #  SECTION 1 — CONSTANTES
 # ══════════════════════════════════════════════════════════════════════════════
 
-STRIPE_LINK = "https://buy.stripe.com/test_14A00i1Qhcox7nI9qV77O00"  # ← remplace par ton vrai lien
-# Stripe Dashboard → Payment Link → URL de confirmation :
-#   https://ton-app.streamlit.app/?payment=success
+STRIPE_LINK = "https://buy.stripe.com/ton_lien_ici"
+# Stripe : URL de confirmation → https://ton-app.streamlit.app/?payment=success
 
-# Situations contextuelles : emoji · label · description injectée dans le prompt
 SITUATIONS = [
-    {
-        "emoji": "📚",
-        "label": "Cours",
-        "desc": "une longue journée de cours — il faut avoir l'air réveillé et stylé, tout en faisant croire qu'on a enfilé ça sans effort à 7h du mat",
-    },
-    {
-        "emoji": "💻",
-        "label": "Journée de taf",
-        "desc": "une journée classique au travail ou en stage — l'objectif est d'avoir l'air professionnel et sérieux, tout en gardant son flow personnel",
-    },
-    {
-        "emoji": "🏋️",
-        "label": "Séance de sport",
-        "desc": "aller transpirer à la salle de sport ou courir dehors — la tenue doit être technique, confortable, mais assez propre pour croiser son crush entre deux machines",
-    },
-    {
-        "emoji": "🍷",
-        "label": "Dîner chic",
-        "desc": "un dîner dans un endroit un peu chic — on sort les belles pièces, il faut être élégant, clean, et ne pas faire tâche dans le décor",
-    },
-    {
-        "emoji": "🛋️",
-        "label": "Chill entre potes",
-        "desc": "traîner en ville ou se poser chez des amis — le confort est roi, mais le 'drip' doit rester suffisant pour ne pas se faire vanner par le groupe",
-    },
-    {
-        "emoji": "🛒",
-        "label": "Faire les courses",
-        "desc": "la mission rapide au supermarché du coin — le test ultime entre le look 'streetwear décontracté' réussi et l'effet 'je suis sorti en pyjama'",
-    },
-    {
-        "emoji": "💘",
-        "label": "Premier date",
-        "desc": "un premier rendez-vous romantique — l'enjeu est critique, il faut faire une excellente impression sans donner l'air d'avoir passé 3 heures devant le miroir",
-    },
-    {
-        "emoji": "🪩",
-        "label": "Soirée / Bar",
-        "desc": "sortir boire un verre ou aller en club — il faut une tenue qui a de l'allure dans la pénombre, qui résiste à la chaleur, et qui attire l'œil",
-    },
-    {
-        "emoji": "💼",
-        "label": "Entretien d'embauche",
-        "desc": "un entretien d'embauche dans une boîte parisienne — il faut paraître sérieux, compétent, et ne surtout pas faire de faute de goût rédhibitoire",
-    },
-    {
-        "emoji": "⛺",
-        "label": "Week-end camping",
-        "desc": "un week-end camping dans la forêt avec des amis — utilité > esthétique, mais ça ne veut pas dire qu'on peut s'habiller comme une poubelle",
-    },
-    {
-        "emoji": "🍽️",
-        "label": "Repas de famille",
-        "desc": "un repas de famille dominical chez des parents bourgeois et légèrement coincés — ni trop casual, ni trop extravagant, sous peine de commentaires passif-agressifs",
-    },
-    {
-        "emoji": "🎪",
-        "label": "Festival",
-        "desc": "un festival de musique en plein air — créativité maximale autorisée, chaleur garantie, confort essentiel, et tout le monde est là pour se montrer",
-    },
+    # ── Quotidien & détente ────────────────────────────────────────────────────
+    {"emoji": "🛋️", "label": "Journée chill",
+     "desc": "une journée à traîner, se reposer ou rester à la maison — le confort prime absolument, mais ça ne veut pas dire n'importe quoi"},
+    {"emoji": "🛒", "label": "Faire les courses",
+     "desc": "une sortie courses ou petite course du quotidien — tenue pratique, décontractée, sans effort visible mais pas négligée"},
+    {"emoji": "📚", "label": "Cours / Études",
+     "desc": "une journée de cours ou d'études — tenue décontractée, fonctionnelle, qui permet de rester concentré toute la journée"},
+    {"emoji": "☕", "label": "Café / Balade",
+     "desc": "un café entre amis ou une balade en ville — casual et soigné, le bon équilibre entre confort et style au quotidien"},
+    {"emoji": "🏋️", "label": "Sport / Loisirs",
+     "desc": "une session sport ou activité de loisirs — performance et esthétique athlétique"},
+    {"emoji": "⛺", "label": "Week-end outdoor",
+     "desc": "un week-end nature, randonnée ou camping — fonctionnel mais pas négligé"},
+    # ── Occasions sociales ────────────────────────────────────────────────────
+    {"emoji": "🍽️", "label": "Repas de famille",
+     "desc": "un repas dominical en famille — entre confort et tenue, ni trop décontracté ni trop guindé"},
+    {"emoji": "🎪", "label": "Festival",
+     "desc": "un festival de musique en plein air — liberté créative maximale, confort essentiel, et tout le monde est là pour se montrer"},
+    {"emoji": "🎧", "label": "Soirée / Club",
+     "desc": "une soirée en club ou bar — style affirmé, à l'aise dans le mouvement, avec une vraie personnalité"},
+    # ── Enjeux forts ──────────────────────────────────────────────────────────
+    {"emoji": "💒", "label": "Mariage (invité)",
+     "desc": "un mariage en tant qu'invité — élégance requise, sans voler la vedette aux mariés"},
+    {"emoji": "🥂", "label": "Soirée chic",
+     "desc": "une soirée habillée ou un dîner élégant — l'occasion de monter en gamme sans tomber dans l'excès"},
+    {"emoji": "💘", "label": "Premier rendez-vous",
+     "desc": "un premier rendez-vous romantique — la première impression compte énormément, il faut paraître soigné, accessible et soi-même"},
+    {"emoji": "💼", "label": "Entretien d'embauche",
+     "desc": "un entretien d'embauche dans une entreprise parisienne — crédibilité, compétence et discrétion sont les maîtres-mots"},
 ]
 
 SITUATION_LABELS = [f"{s['emoji']} {s['label']}" for s in SITUATIONS]
 
-# ── Catalogue d'affiliation ────────────────────────────────────────────────
-# Chaque entrée : id (clé unique que l'IA renvoie), name, emoji, affiliate_url.
-# Pour ajouter un produit : copier un bloc, changer l'id et les infos.
 AFFILIATE_CATALOG = {
     "chain_argent": {
-        "name": "Chaîne en argent",
-        "emoji": "🔗",
-        "tagline": "Le détail qui change tout",
-        "affiliate_url": "https://www.example.com/chain-argent?ref=jugmonstyle",
+        "name": "Chaîne fine en argent",
+        "emoji": "✦",
+        "tagline": "Le détail qui signe une tenue",
+        "affiliate_url": "https://www.example.com/chain-argent?ref=monstyliste",
     },
     "sneakers_blanches": {
-        "name": "Sneakers blanches",
-        "emoji": "👟",
-        "tagline": "La base de toute bonne tenue",
-        "affiliate_url": "https://www.example.com/sneakers-blanches?ref=jugmonstyle",
+        "name": "Sneakers blanches premium",
+        "emoji": "◯",
+        "tagline": "La base absolue de toute bonne tenue",
+        "affiliate_url": "https://www.example.com/sneakers-blanches?ref=monstyliste",
     },
     "casquette_minimale": {
-        "name": "Casquette minimaliste",
-        "emoji": "🧢",
-        "tagline": "Structure et attitude en un geste",
-        "affiliate_url": "https://www.example.com/casquette-minimale?ref=jugmonstyle",
+        "name": "Casquette structurée",
+        "emoji": "△",
+        "tagline": "Structure et caractère en un seul geste",
+        "affiliate_url": "https://www.example.com/casquette?ref=monstyliste",
     },
     "veste_oversize": {
         "name": "Veste oversize",
-        "emoji": "🧥",
-        "tagline": "La pièce qui structure tout",
-        "affiliate_url": "https://www.example.com/veste-oversize?ref=jugmonstyle",
+        "emoji": "□",
+        "tagline": "La pièce qui structure toute la silhouette",
+        "affiliate_url": "https://www.example.com/veste-oversize?ref=monstyliste",
     },
     "sac_tote": {
         "name": "Tote bag en canvas",
-        "emoji": "🛍️",
-        "tagline": "Cool, sobre, fonctionnel",
-        "affiliate_url": "https://www.example.com/tote-bag?ref=jugmonstyle",
+        "emoji": "◇",
+        "tagline": "Élégant, sobre et infiniment pratique",
+        "affiliate_url": "https://www.example.com/tote-bag?ref=monstyliste",
     },
     "lunettes_soleil": {
         "name": "Lunettes de soleil",
-        "emoji": "🕶️",
-        "tagline": "L'accessoire qui ferme les débats",
-        "affiliate_url": "https://www.example.com/lunettes-soleil?ref=jugmonstyle",
+        "emoji": "◉",
+        "tagline": "L'accessoire qui clôt tout débat stylistique",
+        "affiliate_url": "https://www.example.com/lunettes?ref=monstyliste",
     },
 }
 
-# Ligne de catalogue injectée dans le prompt (générée une fois, réutilisée)
 _CATALOG_LINES = "\n".join(
     f"  - {k} → {v['name']}" for k, v in AFFILIATE_CATALOG.items()
 )
@@ -151,16 +114,13 @@ _CATALOG_KEYS = ", ".join(AFFILIATE_CATALOG.keys())
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 2 — INITIALISATION CLIENT OPENAI
+#  SECTION 2 — CLIENT OPENAI
 # ══════════════════════════════════════════════════════════════════════════════
 
 try:
     client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 except Exception:
-    st.error(
-        "⚠️ Clé API introuvable. "
-        "Vérifie que ton fichier `.streamlit/secrets.toml` existe et contient `OPENAI_API_KEY`."
-    )
+    st.error("⚠️ Clé API introuvable — vérifiez `.streamlit/secrets.toml` (clé : OPENAI_API_KEY).")
     st.stop()
 
 
@@ -168,10 +128,11 @@ except Exception:
 #  SECTION 3 — FONCTIONS UTILITAIRES
 # ══════════════════════════════════════════════════════════════════════════════
 
-def compress_image_to_base64(pil_image, max_dimension=512, quality=60):
+def compress_image_to_base64(pil_image, max_dimension=1024, quality=85):
     """
-    Redimensionne à max 512x512 px et compresse en JPEG qualité 60.
-    detail=low → 85 tokens fixes (économie ~-95 % de coût image).
+    Prépare l'image pour l'API Vision haute définition.
+    max_dimension=1024 + quality=85 + detail='high' → analyse fine des matières et coutures.
+    Coût estimé ~765 tokens/image (vs 85 en low) — justifié pour l'analyse premium.
     """
     img = pil_image.copy()
     if img.mode not in ("RGB", "L"):
@@ -186,35 +147,37 @@ def compress_image_to_base64(pil_image, max_dimension=512, quality=60):
     return base64.b64encode(buffer.read()).decode("utf-8")
 
 
-def appeler_openai(base64_image, prompt):
-    """Envoie image + prompt à OpenAI Vision. Retourne la réponse brute."""
+def _build_image_block(b64: str) -> dict:
+    """Construit le bloc image OpenAI avec detail=auto (optimisation intelligente coût/qualité)."""
+    return {
+        "type": "image_url",
+        "image_url": {
+            "url": f"data:image/jpeg;base64,{b64}",
+            "detail": "auto",
+        },
+    }
+
+
+def appeler_openai(prompt: str, images_b64: list) -> str:
+    """
+    Envoie le prompt + 1 ou 2 images à OpenAI Vision.
+    images_b64 : liste de strings base64 (1 = analyse classique, 2 = dilemme A/B).
+    detail=auto : OpenAI choisit intelligemment low ou high selon la taille de l'image.
+    """
+    content = [{"type": "text", "text": prompt}]
+    for b64 in images_b64:
+        content.append(_build_image_block(b64))
+
     response = client.chat.completions.create(
         model="gpt-4o-mini",
-        max_tokens=1000,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{base64_image}",
-                            "detail": "low",
-                        },
-                    },
-                ],
-            }
-        ],
+        max_tokens=900,
+        messages=[{"role": "user", "content": content}],
     )
     return response.choices[0].message.content
 
 
-def extraire_reflexion(reponse_brute):
-    """
-    Sépare le bloc <reflexion>...</reflexion> du reste.
-    Retourne (reflexion_text, reponse_propre).
-    """
+def extraire_reflexion(reponse_brute: str) -> tuple:
+    """Extrait le bloc <reflexion>…</reflexion>. Retourne (reflexion, reponse_propre)."""
     pattern = re.compile(r"<reflexion>(.*?)</reflexion>", re.DOTALL | re.IGNORECASE)
     match = pattern.search(reponse_brute)
     reflexion_text = match.group(1).strip() if match else ""
@@ -222,191 +185,284 @@ def extraire_reflexion(reponse_brute):
     return reflexion_text, reponse_propre
 
 
-def parser_reponse(reponse_propre):
+def parser_reponse(reponse_propre: str) -> dict:
     """
-    Parse la réponse au format complet (7 champs) :
-      visibilite | genre | description | score | titre | analyse | conseil | accessoire_id
+    Parse le format pipe commun à tous les modes.
 
-    Retourne un dict avec les clés correspondantes.
-    - visibilite : "ok" ou "erreur:<raison>"
-    - genre      : "masculin", "feminin", ou "neutre"
-    - description: paragraphe descriptif de la tenue (preuve par l'image)
-    - score      : ex. "7/10"
-    - titre      : nom du style (3-4 mots)
-    - analyse    : verdict expert 2-3 phrases
-    - conseil    : conseil actionnable
-    - accessoire : clé du catalogue ou "" (mode Drip) / toujours "" en Roast
+    Analyse classique (8 champs) :
+      visibilite | genre | description | score | titre | analyse | conseil | accessoire
+
+    Mode Dilemme (9 champs) :
+      visibilite | genre | desc_a | desc_b | gagnante | score_a | score_b | analyse_comparative | accessoire
+
+    Mode Roast (7 champs) :
+      visibilite | genre | description | score | titre | roast | punchline
     """
     parties = [p.strip() for p in reponse_propre.split("|")]
 
     def get(i, defaut=""):
         return parties[i] if len(parties) > i else defaut
 
-    visibilite  = get(0, "ok")
-    genre       = get(1, "neutre").lower()
-    description = get(2, "")
-    score       = get(3, "?/10")
-    titre       = get(4, "Analyse")
-    analyse     = get(5, reponse_propre)
-    conseil     = get(6, "")
-    accessoire  = get(7, "")
-
-    # Normalisation genre
+    visibilite = get(0, "ok")
+    genre = get(1, "neutre").lower()
     if genre not in ("masculin", "feminin", "neutre"):
         genre = "neutre"
 
+    n = len(parties)
+
+    if n >= 9:
+        # Mode Dilemme
+        result = {
+            "mode": "dilemme",
+            "visibilite": visibilite,
+            "genre": genre,
+            "desc_a": get(2),
+            "desc_b": get(3),
+            "gagnante": get(4, "A"),
+            "score_a": get(5, "?/10"),
+            "score_b": get(6, "?/10"),
+            "analyse": get(7),
+            "accessoire": get(8, ""),
+        }
+    elif n >= 8:
+        # Analyse classique Drip
+        acc = get(7, "")
+        if acc.lower() in ("none", "aucun", ""):
+            acc = ""
+        result = {
+            "mode": "drip",
+            "visibilite": visibilite,
+            "genre": genre,
+            "description": get(2),
+            "score": get(3, "?/10"),
+            "titre": get(4, "Analyse"),
+            "analyse": get(5, reponse_propre),
+            "conseil": get(6),
+            "accessoire": acc,
+        }
+    else:
+        # Roast (7 champs) ou réponse courte (erreur visibilité)
+        result = {
+            "mode": "roast",
+            "visibilite": visibilite,
+            "genre": genre,
+            "description": get(2),
+            "score": get(3, "?/10"),
+            "titre": get(4, "Analyse"),
+            "analyse": get(5, reponse_propre),
+            "conseil": get(6),
+            "accessoire": "",
+        }
+
     # Normalisation accessoire
-    if accessoire.lower() in ("none", "aucun", ""):
-        accessoire = ""
+    acc = result.get("accessoire", "")
+    if acc.lower() in ("none", "aucun", ""):
+        result["accessoire"] = ""
 
-    return {
-        "visibilite":  visibilite,
-        "genre":       genre,
-        "description": description,
-        "score":       score,
-        "titre":       titre,
-        "analyse":     analyse,
-        "conseil":     conseil,
-        "accessoire":  accessoire,
-    }
+    return result
 
 
-def construire_prompt(is_roast, situation_desc):
-    """Injecte le contexte de situation (+ catalogue affiliation pour Drip) dans le prompt."""
-    if not is_roast:
+def construire_prompt(mode: str, situation_desc: str, intention: str) -> str:
+    """Injecte contexte + intention dans le bon template."""
+    intention_block = (
+        f"\nINTENTION DE STYLE DE L'UTILISATEUR : « {intention} »\n"
+        "Évalue si la tenue correspond à cette intention — c'est un critère clé de l'analyse.\n"
+        if intention.strip() else ""
+    )
+    if mode == "drip":
         return PROMPT_DRIP_TEMPLATE.format(
             situation=situation_desc,
+            intention_block=intention_block,
             catalog_lines=_CATALOG_LINES,
             catalog_keys=_CATALOG_KEYS,
         )
-    return PROMPT_ROAST_TEMPLATE.format(situation=situation_desc)
+    elif mode == "dilemme":
+        return PROMPT_DILEMME_TEMPLATE.format(
+            situation=situation_desc,
+            intention_block=intention_block,
+            catalog_lines=_CATALOG_LINES,
+            catalog_keys=_CATALOG_KEYS,
+        )
+    else:
+        return PROMPT_ROAST_TEMPLATE.format(
+            situation=situation_desc,
+            intention_block=intention_block,
+        )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 4 — TEMPLATES DE PROMPTS (CoT + contexte dynamique)
+#  SECTION 4 — PROMPTS IA
 # ══════════════════════════════════════════════════════════════════════════════
 
-PROMPT_DRIP_TEMPLATE = """Tu es "Maxime Leclair", Directeur Artistique de mode parisien avec 15 ans d'expérience entre les rédactions de Vogue, les castings de fashion week et les studios de streetwear. Tu as l'oeil absolu — et l'honnêteté d'un chirurgien.
+PROMPT_DRIP_TEMPLATE = """\
+Tu es un(e) styliste personnel(le) expert(e) — bienveillant(e), direct(e) et pédagogique. \
+Tu analyses les tenues avec l'œil d'un(e) professionnel(le) qui veut vraiment aider. \
+Tu expliques le POURQUOI de chaque conseil avec de vraies règles de style \
+(colorimétrie, morphologie, équilibre des volumes, règle du 3e pièce, contraste tonal, etc.).
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-CONTEXTE DE LA SITUATION :
-L'utilisateur porte cette tenue pour : {situation}.
-Ton analyse doit être entièrement ancrée dans ce contexte.
+CONTEXTE : Cette tenue est portée pour {situation}.
+{intention_block}\
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-CATALOGUE D'ACCESSOIRES DISPONIBLES :
+CATALOGUE D'ACCESSOIRES (pour la recommandation finale) :
 {catalog_lines}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PROCESSUS D'ANALYSE EN 6 ÉTAPES (Chain of Thought) :
-Tu dois réfléchir dans une balise <reflexion> AVANT de produire ton verdict public.
+PROCESSUS D'ANALYSE — réfléchis dans une balise <reflexion> avant le verdict.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-ÉTAPE 1 — VÉRIFICATION DE VISIBILITÉ :
-Évalue honnêtement si tu peux réellement analyser la tenue :
-  - Voit-on le corps en entier ou au moins du buste aux pieds ?
-  - L'image est-elle suffisamment lumineuse et nette ?
-  - La tenue n'est-elle pas cachée (trench fermé, angle de dos uniquement, plan trop serré sur le visage) ?
-→ Si la tenue est clairement visible : note "ok".
-→ Si tu ne peux pas faire une vraie analyse : note "erreur" et explique brièvement POURQUOI (ex: selfie de visage, trop sombre, image coupée sous la taille).
+ÉTAPE 1 — ÉVALUATION DE LA PHOTO :
+Règle d'or : tu analyses TOUJOURS la tenue avec ce que tu vois, même si la photo est imparfaite.
+→ Ne renvoie "erreur" QUE si l'image est entièrement hors-sujet (pas de personne), \
+entièrement noire/illisible, ou si aucun vêtement n'est visible du tout.
+→ Dans tous les autres cas (photo un peu sombre, coupée sous les genoux, angle de 3/4, \
+selfie montrant le haut du corps) : note "ok" et intègre un avertissement bienveillant \
+d'une phrase dans le champ "description" si pertinent \
+(ex : "Je ne vois pas tes chaussures, mais voici mon analyse du haut —" \
+ou "Pour un conseil complet, essaie une photo tête aux pieds la prochaine fois !").
 
-ÉTAPE 2 — DÉTECTION DU GENRE DE PRÉSENTATION :
-Observe les codes vestimentaires visibles (coupes, pièces, palette, silhouette) et détermine si la personne présente un style :
-  - "masculin" : codes classiquement masculins (pantalon droit, chemise, costume, etc.)
-  - "feminin" : codes classiquement féminins (robe, jupe, décolleté, etc.)
-  - "neutre" : codes mixtes, androgyne, ou impossible à catégoriser
-→ Cette détection sert UNIQUEMENT à adapter tes pronoms et ton vocabulaire, pas à juger.
+ÉTAPE 2 — GENRE DE PRÉSENTATION :
+"masculin", "feminin" ou "neutre" selon les codes vestimentaires visibles — \
+uniquement pour adapter les pronoms, pas un jugement.
 
 ÉTAPE 3 — INVENTAIRE PRÉCIS :
-Liste méthodiquement chaque pièce visible : type exact, couleur précise (pas juste "bleu" — "bleu marine", "cobalt", "ciel"), matière apparente, et coupe.
+Chaque pièce visible : type exact, couleur précise ("bleu ardoise" pas "bleu"), \
+matière apparente (coton, denim, jersey, cuir...), coupe.
 
-ÉTAPE 4 — ANALYSE STYLISTIQUE :
-  - Silhouette et proportions globales
-  - Colorimétrie (harmonie, contraste, rappels entre pièces)
-  - Adéquation avec "{situation}"
-  - Point fort dominant et point faible principal
+ÉTAPE 4 — ANALYSE EXPERTE :
+  · COLORIMÉTRIE : harmonie analogique/complémentaire ? Contraste tonal ? Rappels de couleur ?
+  · MORPHOLOGIE : les volumes sont-ils équilibrés (règle haut volumineux → bas ajusté) ?
+  · RÈGLE DU 3e PIÈCE : y a-t-il un élément qui élève la tenue ?
+  · ADÉQUATION CONTEXTE & INTENTION : la tenue remplit-elle son rôle ?
 
-ÉTAPE 5 — CHOIX DE L'ACCESSOIRE :
-Parmi le catalogue disponible, lequel élève le mieux cette tenue pour ce contexte ? Justifie en une phrase.
+ÉTAPE 5 — ACCESSOIRE CATALOGUE : lequel apporte la valeur ajoutée la plus immédiate ?
 
-ÉTAPE 6 — VERDICT PRÉLIMINAIRE :
-Note sur 10, titre du style (3-4 mots), angle du conseil.
+ÉTAPE 6 — VERDICT : note sur 10, nom de style (3-4 mots), conseil principal.
 
-<reflexion> contient tout ce travail — elle N'APPARAÎT PAS dans le verdict public.
+<reflexion> reste privée — elle N'APPARAÎT PAS dans la réponse publique.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-VERDICT PUBLIC (après </reflexion>) :
+FORMAT DE RÉPONSE PUBLIQUE (après </reflexion>) :
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Si ÉTAPE 1 = erreur → réponds UNIQUEMENT avec ce format (3 champs seulement) :
-erreur:[raison courte et directe] | neutre | [Message bienveillant à l'utilisateur : explique ce qui ne va pas dans la photo et comment retenter, en 1-2 phrases — sans inventer de tenue]
+Si vraie erreur (image entièrement illisible/hors-sujet) → 3 champs :
+erreur:[raison courte] | neutre | [Message doux expliquant comment retenter — 1 phrase]
 
-Si ÉTAPE 1 = ok → réponds UNIQUEMENT avec ce format (8 champs), séparés par des | :
-ok | [masculin/feminin/neutre] | [Description détaillée de la tenue en 3-4 phrases — ce que tu vois EXACTEMENT : chaque pièce, sa couleur précise, sa matière apparente, sa coupe, et comment les éléments s'articulent entre eux. L'utilisateur doit se dire "l'IA a vraiment tout vu".] | [Note]/10 | [Nom du style en 3-4 mots] | [Analyse experte 2-3 phrases, contexte inclus, pronoms adaptés au genre détecté] | [Conseil d'élévation précis et actionnable] | [Identifiant exact du catalogue ou "none"]
+Sinon (= quasi toujours) → exactement 8 champs séparés par | :
+ok | [masculin/feminin/neutre] | [Description 3-4 phrases : chaque pièce visible, \
+couleur exacte, matière, coupe, articulation. Inclure ici tout avertissement photo si besoin.] | \
+[Note]/10 | [Nom du style 3-4 mots] | \
+[Analyse experte 2-3 phrases — règles appliquées, contexte + intention évalués, pronoms adaptés] | \
+[Conseil concret — explique le POURQUOI avec une règle précise] | \
+[ID accessoire parmi {catalog_keys} ou "none"]
 
 RÈGLES ABSOLUES :
-- Champ 8 : uniquement parmi {catalog_keys} ou "none". Jamais d'identifiant inventé.
-- Ne rien écrire en dehors du format demandé après </reflexion>.
-- En cas d'erreur de visibilité : ne jamais inventer ou deviner la tenue.
+- Champ 8 : uniquement parmi {catalog_keys} ou "none". Jamais d'ID inventé.
+- Ton : chaleureux, expert, jamais condescendant.
+- Ne rien écrire hors format après </reflexion>.
 """
 
-PROMPT_ROAST_TEMPLATE = """Tu es "Le Commissaire du Mauvais Goût", critique vestimentaire légendaire, sans filtre, sans pitié. Tu as le flair d'un chasseur de tendances et la langue d'un chroniqueur Gen Z qui a grandi sur Twitter.
+PROMPT_DILEMME_TEMPLATE = """\
+Tu es un(e) styliste personnel(le) expert(e). \
+L'utilisateur te soumet DEUX tenues (image A et image B) et veut savoir laquelle choisir. \
+Tu joues le rôle d'un(e) ami(e) honnête dans la cabine d'essayage : \
+bienveillant(e), précis(e), et tu justifies chaque choix avec une règle de style réelle.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-CONTEXTE DE LA SITUATION :
-La personne porte CETTE tenue pour : {situation}.
-Exploite l'inadéquation entre la tenue et ce contexte — c'est là que les meilleures punchlines naissent.
+CONTEXTE : Ces tenues sont portées pour {situation}.
+{intention_block}\
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PROCESSUS D'ANALYSE EN 6 ÉTAPES (Chain of Thought) :
-Tu dois réfléchir dans une balise <reflexion> AVANT de produire ton verdict public.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-ÉTAPE 1 — VÉRIFICATION DE VISIBILITÉ :
-Évalue honnêtement si tu peux réellement analyser la tenue :
-  - Voit-on le corps en entier ou au moins du buste aux pieds ?
-  - L'image est-elle suffisamment lumineuse et nette ?
-  - La tenue n'est-elle pas cachée (trench fermé, angle de dos uniquement, plan trop serré sur le visage) ?
-→ Si la tenue est clairement visible : note "ok".
-→ Si tu ne peux pas faire une vraie analyse : note "erreur" et explique brièvement POURQUOI (ex: selfie de visage, trop sombre, image coupée sous la taille).
-
-ÉTAPE 2 — DÉTECTION DU GENRE DE PRÉSENTATION :
-Détermine "masculin", "feminin" ou "neutre" selon les codes vestimentaires visibles.
-Adapte tes pronoms et références en conséquence dans le Roast.
-
-ÉTAPE 3 — INVENTAIRE DES CRIMES :
-Liste méthodiquement chaque pièce : type, couleur exacte, matière, coupe — et le problème principal de chacune.
-
-ÉTAPE 4 — HIÉRARCHIE DES HORREURS :
-Identifie LE pire élément (le cœur du Roast) et classe les autres par ordre décroissant d'horreur stylistique.
-
-ÉTAPE 5 — ANGLE D'ATTAQUE CONTEXTUEL :
-Comment "{situation}" amplifie-t-il le désastre ? Cherche l'angle le plus absurde et percutant.
-
-ÉTAPE 6 — ARSENAL DE PUNCHLINES :
-Brainstorme 2-3 comparaisons ridicules (personnes, lieux, situations, films). Retiens la plus dévastatrice. Rédige la sentence finale (courte, mortelle, mémorable).
-
-<reflexion> contient tout ce travail — elle N'APPARAÎT PAS dans le verdict public.
+CATALOGUE D'ACCESSOIRES :
+{catalog_lines}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-VERDICT PUBLIC (après </reflexion>) :
+PROCESSUS D'ANALYSE — réfléchis dans une balise <reflexion>.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Si ÉTAPE 1 = erreur → réponds UNIQUEMENT avec ce format (3 champs) :
-erreur:[raison courte] | neutre | [Message sarcastique mais clair : explique ce qui ne va pas dans la photo, en 1-2 phrases — le Commissaire est agacé qu'on lui soumette une photo illisible]
+ÉTAPE 1 — ÉVALUATION DES PHOTOS :
+Même règle que pour l'analyse simple : tu analyses avec ce que tu vois. \
+Ne renvoie "erreur" que si les images sont entièrement illisibles ou ne montrent aucun vêtement.
 
-Si ÉTAPE 1 = ok → réponds UNIQUEMENT avec ce format (7 champs), séparés par des | :
-ok | [masculin/feminin/neutre] | [Description précise de la tenue en 3-4 phrases — chaque pièce, sa couleur exacte, sa matière, sa coupe. Ton peut être légèrement sarcastique dès ici.] | [Note]/10 | [Titre humiliant en 3-4 mots] | [Le Roast — 2-3 phrases percutantes, contexte exploité, comparaisons incluses, pronoms adaptés au genre] | [Sentence finale — une punchline courte et mortelle]
+ÉTAPE 2 — GENRE de présentation global (pour adapter les pronoms).
+ÉTAPE 3 — ANALYSE TENUE A : inventaire, colorimétrie, morphologie, adéquation contexte.
+ÉTAPE 4 — ANALYSE TENUE B : idem.
+ÉTAPE 5 — COMPARAISON : avantages relatifs de chaque tenue pour ce contexte et cette intention.
+ÉTAPE 6 — VERDICT : laquelle gagne et pourquoi (règle de style décisive) ?
+
+<reflexion> reste privée.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FORMAT DE RÉPONSE PUBLIQUE (après </reflexion>) :
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Si vraie erreur → 3 champs :
+erreur:[raison] | neutre | [Explication douce — comment retenter]
+
+Sinon → exactement 9 champs séparés par | :
+ok | [masculin/feminin/neutre] | [Description tenue A — pièces, couleurs, matières] | \
+[Description tenue B — pièces, couleurs, matières] | [A ou B — la gagnante] | \
+[Score tenue A]/10 | [Score tenue B]/10 | \
+[Analyse comparative 3-4 phrases : points forts de chaque tenue, règle décisive, \
+conseil d'amélioration pour la perdante, adéquation contexte + intention] | \
+[ID accessoire parmi {catalog_keys} ou "none"]
 
 RÈGLES ABSOLUES :
-- Ne rien écrire en dehors du format demandé après </reflexion>.
-- En cas d'erreur de visibilité : ne jamais inventer ou deviner la tenue. Le Commissaire refuse de travailler dans le noir.
+- Champ 9 : uniquement parmi {catalog_keys} ou "none".
+- Ne rien écrire hors format après </reflexion>.
+"""
+
+PROMPT_ROAST_TEMPLATE = """\
+Tu es un(e) critique vestimentaire légendairement sans pitié. \
+Ton humour est chirurgical, tes comparaisons sont absurdes et mémorables. \
+Tu es impitoyable comme Gordon Ramsay dans une friperie, \
+avec le vocabulaire d'un(e) rédacteur(trice) de mode qui aurait grandi sur Twitter.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+CONTEXTE : Cette tenue est portée pour {situation}.
+{intention_block}\
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PROCESSUS — réfléchis dans une balise <reflexion>.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ÉTAPE 1 — ÉVALUATION DE LA PHOTO :
+Tu analyses toujours avec ce que tu vois. \
+Ne renvoie "erreur" que si l'image est entièrement noire/illisible ou ne montre aucun vêtement. \
+Si la photo est imparfaite, intègre-le dans le roast avec humour \
+(ex : "Je ne vois pas tes chaussures, ce qui est peut-être une bénédiction pour tout le monde.").
+
+ÉTAPE 2 — GENRE de présentation (pronoms à adapter).
+ÉTAPE 3 — INVENTAIRE DES CRIMES : chaque pièce visible et son problème principal.
+ÉTAPE 4 — HIÉRARCHIE : LE pire élément — cœur du roast.
+ÉTAPE 5 — ANGLE CONTEXTUEL : comment "{situation}" amplifie le désastre ?
+ÉTAPE 6 — PUNCHLINES : 3 comparaisons ridicules → retenir la plus dévastatrice + sentence finale.
+
+<reflexion> reste privée.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FORMAT DE RÉPONSE PUBLIQUE (après </reflexion>) :
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Si vraie erreur (image entièrement illisible) → 3 champs :
+erreur:[raison] | neutre | [Le critique est agacé — dit clairement pourquoi c'est inutilisable]
+
+Sinon → exactement 7 champs séparés par | :
+ok | [masculin/feminin/neutre] | [Description 2-3 phrases — précise, déjà légèrement sarcastique] | \
+[Note]/10 | [Titre humiliant 3-4 mots] | \
+[Roast — 2-3 phrases percutantes, contexte exploité, pronoms adaptés] | \
+[Sentence finale — punchline courte et mortelle]
+
+RÈGLES ABSOLUES :
+- Humour, jamais de haine réelle. Attaque uniquement les vêtements, pas le physique.
+- Ne rien écrire hors format après </reflexion>.
 """
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 5 — GESTION DE L'ÉTAT (Session State & Query Params)
+#  SECTION 5 — SESSION STATE & QUERY PARAMS
 # ══════════════════════════════════════════════════════════════════════════════
 
 if "a_paye" not in st.session_state:
@@ -420,17 +476,52 @@ if payment_param == "success" and not st.session_state.a_paye:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 6 — CSS PERSONNALISÉ
+#  SECTION 6 — CSS PREMIUM (light mode épuré, typographie clean)
 # ══════════════════════════════════════════════════════════════════════════════
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Inter:wght@300;400;500;600&display=swap');
 
-html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
-    background-color: #0A0A0F !important;
-    color: #F0F0F0;
-    font-family: 'DM Sans', sans-serif;
+/* ── Palette & variables ─────────────────────────────────────────── */
+:root {
+    --bg:          #FAFAF8;
+    --surface:     #FFFFFF;
+    --surface-2:   #F5F4F0;
+    --border:      #E8E6E0;
+    --border-soft: #F0EEE8;
+    --text-primary:   #1A1A18;
+    --text-secondary: #6B6960;
+    --text-muted:     #A8A49C;
+    --accent:      #2C2C28;
+    --accent-warm: #8B6F47;
+    --accent-soft: #F2EDE5;
+    --success-bg:  #F0F7F0;
+    --success-border: #C8DEC8;
+    --success-text:   #2A5A2A;
+    --warning-bg:  #FDF6EC;
+    --warning-border: #E8D4A8;
+    --warning-text:   #7A5A20;
+    --danger-bg:   #FDF0F0;
+    --danger-border:  #E8C8C8;
+    --danger-text:    #6A2020;
+    --radius-sm: 8px;
+    --radius-md: 14px;
+    --radius-lg: 20px;
+    --radius-xl: 28px;
+    --shadow-sm: 0 1px 4px rgba(0,0,0,0.06);
+    --shadow-md: 0 4px 16px rgba(0,0,0,0.08);
+    --shadow-lg: 0 8px 32px rgba(0,0,0,0.10);
+}
+
+/* ── Reset & base ────────────────────────────────────────────────── */
+html, body,
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"] {
+    background-color: var(--bg) !important;
+    color: var(--text-primary);
+    font-family: 'Inter', sans-serif;
+    font-weight: 400;
 }
 
 #MainMenu, footer, header,
@@ -438,475 +529,614 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
 [data-testid="stDecoration"],
 [data-testid="collapsedControl"] { display: none !important; }
 
-[data-testid="stMain"] > div:first-child { padding-top: 2rem !important; }
+[data-testid="stMain"] > div:first-child { padding-top: 2.5rem !important; }
 .block-container {
-    max-width: 520px !important;
-    padding: 1.5rem 1.2rem 4rem !important;
+    max-width: 560px !important;
+    padding: 0 1.4rem 5rem !important;
     margin: 0 auto;
 }
 
-.app-header { text-align: center; padding: 1.8rem 1rem 1rem; }
+/* ── Header ──────────────────────────────────────────────────────── */
+.app-header {
+    text-align: center;
+    padding: 2rem 1rem 1.5rem;
+}
+.app-eyebrow {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    color: var(--text-muted);
+    font-weight: 500;
+    margin-bottom: 0.8rem;
+}
 .app-title {
-    font-family: 'Syne', sans-serif;
-    font-size: clamp(2.4rem, 10vw, 3.4rem);
-    font-weight: 800;
-    line-height: 1.1;
-    background: linear-gradient(135deg, #FE2C55 0%, #ff6b35 40%, #25F4EE 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    letter-spacing: -1px;
-    margin-bottom: 0.4rem;
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: clamp(2rem, 8vw, 3rem);
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.15;
+    letter-spacing: -0.5px;
+    margin: 0 0 0.6rem;
+}
+.app-title em {
+    font-style: italic;
+    color: var(--accent-warm);
 }
 .app-subtitle {
-    font-size: clamp(0.9rem, 3.5vw, 1.05rem);
-    color: #888;
-    font-weight: 400;
-    line-height: 1.5;
-    margin-top: 0;
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    font-weight: 300;
+    line-height: 1.6;
+    max-width: 380px;
+    margin: 0 auto;
 }
-.neon-divider {
-    height: 2px;
-    background: linear-gradient(90deg, transparent, #FE2C55, #25F4EE, transparent);
+.header-divider {
+    height: 1px;
+    background: var(--border);
     border: none;
-    margin: 1.6rem 0;
-    opacity: 0.6;
+    margin: 1.8rem 0;
 }
 
+/* ── Section labels ──────────────────────────────────────────────── */
+.section-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--text-muted);
+    font-weight: 600;
+    display: block;
+    margin: 1.8rem 0 0.8rem;
+}
+
+/* ── Upload zones ────────────────────────────────────────────────── */
 [data-testid="stFileUploader"] {
-    background: #13131A !important;
-    border: 1.5px dashed #2a2a3a !important;
-    border-radius: 20px !important;
-    padding: 1rem !important;
-    transition: border-color 0.3s ease;
+    background: var(--surface) !important;
+    border: 1.5px dashed var(--border) !important;
+    border-radius: var(--radius-lg) !important;
+    padding: 0.8rem !important;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
-[data-testid="stFileUploader"]:hover { border-color: #FE2C55 !important; }
+[data-testid="stFileUploader"]:hover {
+    border-color: var(--accent-warm) !important;
+    box-shadow: var(--shadow-sm) !important;
+}
 [data-testid="stFileUploader"] label {
-    font-family: 'DM Sans', sans-serif;
-    font-size: 0.95rem !important;
-    color: #aaa !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 0.9rem !important;
+    color: var(--text-secondary) !important;
+    font-weight: 400 !important;
 }
-[data-testid="stFileUploaderDropzone"] { background: transparent !important; border: none !important; }
-
-.result-card {
-    background: #13131A;
-    border: 1px solid #1E1E2E;
-    border-radius: 24px;
-    padding: 1.2rem;
-    margin-top: 1rem;
+[data-testid="stFileUploaderDropzone"] {
+    background: transparent !important;
+    border: none !important;
 }
 
+/* ── Images uploadées ────────────────────────────────────────────── */
 [data-testid="stImage"] img {
-    border-radius: 16px !important;
+    border-radius: var(--radius-md) !important;
     object-fit: cover;
     width: 100%;
-    max-height: 380px;
+    box-shadow: var(--shadow-sm) !important;
 }
 [data-testid="stImage"] > div > p {
-    font-size: 0.75rem !important;
-    color: #555 !important;
+    font-size: 0.72rem !important;
+    color: var(--text-muted) !important;
     text-align: center;
     margin-top: 0.4rem;
 }
 
-.mode-label {
-    font-family: 'Syne', sans-serif;
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: #F0F0F0;
-    margin-bottom: 0.8rem;
-    display: block;
+/* ── Mode selector (radio) ───────────────────────────────────────── */
+.mode-cards { display: flex; gap: 0.8rem; margin: 0.8rem 0; }
+[data-testid="stRadio"] > div {
+    gap: 0.6rem !important;
+    flex-direction: column !important;
 }
-.section-label {
-    font-family: 'Syne', sans-serif;
-    font-size: 0.85rem;
-    font-weight: 700;
-    color: #888;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    margin: 1.4rem 0 0.6rem;
-    display: block;
-}
-
-[data-testid="stRadio"] > div { gap: 0.6rem !important; flex-direction: column !important; }
 [data-testid="stRadio"] label {
-    background: #0E0E18 !important;
-    border: 1.5px solid #222235 !important;
-    border-radius: 14px !important;
-    padding: 0.75rem 1rem !important;
-    font-size: 0.95rem !important;
+    background: var(--surface) !important;
+    border: 1.5px solid var(--border) !important;
+    border-radius: var(--radius-md) !important;
+    padding: 0.85rem 1rem !important;
+    font-size: 0.9rem !important;
     font-weight: 500 !important;
-    color: #ccc !important;
+    color: var(--text-secondary) !important;
     transition: all 0.2s ease !important;
     cursor: pointer !important;
     width: 100% !important;
+    font-family: 'Inter', sans-serif !important;
 }
-[data-testid="stRadio"] label:hover { border-color: #FE2C55 !important; color: #fff !important; background: #1a0d14 !important; }
+[data-testid="stRadio"] label:hover {
+    border-color: var(--accent-warm) !important;
+    color: var(--text-primary) !important;
+    background: var(--accent-soft) !important;
+}
 [data-testid="stRadio"] label:has(input:checked) {
-    border-color: #FE2C55 !important;
-    background: linear-gradient(135deg, #1a0610, #0d1a1a) !important;
-    color: #fff !important;
-    box-shadow: 0 0 14px rgba(254, 44, 85, 0.18) !important;
+    border-color: var(--accent) !important;
+    background: var(--accent-soft) !important;
+    color: var(--text-primary) !important;
+    box-shadow: var(--shadow-sm) !important;
 }
 [data-testid="stRadio"] input[type="radio"] { display: none !important; }
 
-/* Pills natifs Streamlit */
-[data-testid="stPills"] { gap: 0.5rem !important; flex-wrap: wrap !important; }
+/* ── Pills (situation) ───────────────────────────────────────────── */
+[data-testid="stPills"] { gap: 0.4rem !important; flex-wrap: wrap !important; }
 [data-testid="stPills"] button {
-    background: #0E0E18 !important;
-    border: 1.5px solid #222235 !important;
+    background: var(--surface) !important;
+    border: 1.5px solid var(--border) !important;
     border-radius: 50px !important;
-    color: #aaa !important;
-    font-family: 'DM Sans', sans-serif !important;
-    font-size: 0.85rem !important;
-    padding: 0.4rem 0.85rem !important;
-    transition: all 0.2s ease !important;
+    color: var(--text-secondary) !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 0.82rem !important;
+    font-weight: 500 !important;
+    padding: 0.35rem 0.85rem !important;
+    transition: all 0.18s ease !important;
 }
-[data-testid="stPills"] button:hover { border-color: #25F4EE !important; color: #fff !important; }
+[data-testid="stPills"] button:hover {
+    border-color: var(--accent-warm) !important;
+    color: var(--text-primary) !important;
+    background: var(--accent-soft) !important;
+}
 [data-testid="stPills"] button[aria-selected="true"],
 [data-testid="stPills"] button[data-selected="true"] {
-    background: linear-gradient(135deg, #0a1f2b, #0d2b1a) !important;
-    border-color: #25F4EE !important;
-    color: #25F4EE !important;
-    box-shadow: 0 0 10px rgba(37, 244, 238, 0.2) !important;
+    background: var(--accent) !important;
+    border-color: var(--accent) !important;
+    color: #FFFFFF !important;
 }
 
-/* Selectbox fallback */
+/* ── Selectbox fallback ──────────────────────────────────────────── */
 [data-testid="stSelectbox"] > div > div {
-    background: #13131A !important;
-    border: 1.5px solid #222235 !important;
-    border-radius: 14px !important;
-    color: #F0F0F0 !important;
-    font-family: 'DM Sans', sans-serif !important;
-    font-size: 0.95rem !important;
+    background: var(--surface) !important;
+    border: 1.5px solid var(--border) !important;
+    border-radius: var(--radius-md) !important;
+    color: var(--text-primary) !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 0.9rem !important;
+}
+[data-testid="stSelectbox"] > div > div:hover {
+    border-color: var(--accent-warm) !important;
+}
+
+/* ── Text input (intention) ──────────────────────────────────────── */
+[data-testid="stTextInput"] input {
+    background: var(--surface) !important;
+    border: 1.5px solid var(--border) !important;
+    border-radius: var(--radius-md) !important;
+    color: var(--text-primary) !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 0.9rem !important;
+    padding: 0.7rem 1rem !important;
     transition: border-color 0.2s ease !important;
 }
-[data-testid="stSelectbox"] > div > div:hover { border-color: #25F4EE !important; }
-[data-testid="stSelectbox"] svg { color: #25F4EE !important; }
+[data-testid="stTextInput"] input:focus {
+    border-color: var(--accent-warm) !important;
+    box-shadow: 0 0 0 3px rgba(139, 111, 71, 0.12) !important;
+}
+[data-testid="stTextInput"] input::placeholder { color: var(--text-muted) !important; }
+[data-testid="stTextInput"] label {
+    font-size: 0.7rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 2px !important;
+    color: var(--text-muted) !important;
+    font-weight: 600 !important;
+}
 
+/* ── Bouton principal ────────────────────────────────────────────── */
 div.stButton > button:first-child {
-    background: linear-gradient(135deg, #FE2C55 0%, #d4196b 50%, #25F4EE 100%) !important;
-    background-size: 200% 200% !important;
-    color: #fff !important;
+    background-color: var(--accent) !important;
+    background-image: none !important;
+    color: #FFFFFF !important;
     border: none !important;
     border-radius: 50px !important;
-    padding: 1rem 2rem !important;
-    font-size: clamp(1rem, 4vw, 1.2rem) !important;
-    font-family: 'Syne', sans-serif !important;
-    font-weight: 700 !important;
-    letter-spacing: 0.5px !important;
+    padding: 0.9rem 2.2rem !important;
+    font-size: 0.9rem !important;
+    font-family: 'Inter', sans-serif !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.3px !important;
     width: 100% !important;
-    margin-top: 0.5rem !important;
-    transition: all 0.35s cubic-bezier(0.23, 1, 0.32, 1) !important;
-    box-shadow: 0 4px 24px rgba(254, 44, 85, 0.25) !important;
+    margin-top: 0.6rem !important;
+    transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease !important;
+    box-shadow: 0 2px 12px rgba(44, 44, 40, 0.18) !important;
     cursor: pointer !important;
-    animation: gradientShift 4s ease infinite !important;
+    -webkit-text-fill-color: #FFFFFF !important;
+}
+div.stButton > button:first-child * {
+    color: #FFFFFF !important;
+    -webkit-text-fill-color: #FFFFFF !important;
 }
 div.stButton > button:first-child:hover {
-    transform: translateY(-3px) scale(1.03) !important;
-    box-shadow: 0 10px 36px rgba(254, 44, 85, 0.45) !important;
+    background-color: #3D3D38 !important;
+    color: #FFFFFF !important;
+    -webkit-text-fill-color: #FFFFFF !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 20px rgba(44, 44, 40, 0.22) !important;
 }
-div.stButton > button:first-child:active { transform: translateY(0) scale(0.98) !important; }
-@keyframes gradientShift {
-    0%   { background-position: 0% 50%; }
-    50%  { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
+div.stButton > button:first-child:active,
+div.stButton > button:first-child:focus {
+    background-color: #1E1E1B !important;
+    color: #FFFFFF !important;
+    -webkit-text-fill-color: #FFFFFF !important;
+    transform: translateY(0) !important;
+    box-shadow: 0 1px 6px rgba(44, 44, 40, 0.15) !important;
+    outline: none !important;
 }
 
+/* ── Spinner ─────────────────────────────────────────────────────── */
 [data-testid="stSpinner"] p {
-    color: #888 !important;
-    font-size: 0.9rem !important;
-    font-style: italic;
+    color: var(--text-secondary) !important;
+    font-size: 0.88rem !important;
+    font-family: 'Inter', sans-serif !important;
 }
 
+/* ── Alertes Streamlit (success / error) ─────────────────────────── */
 [data-testid="stAlert"] {
-    border-radius: 18px !important;
-    font-size: 1rem !important;
-    line-height: 1.6 !important;
-    padding: 1.1rem 1.3rem !important;
-    margin-top: 0.5rem !important;
-}
-[data-testid="stAlert"][data-baseweb="notification"] {
-    background: #0d1f1a !important;
-    border: 1px solid #25F4EE40 !important;
-    color: #b8fff8 !important;
-}
-div[data-testid="stAlert"].st-emotion-cache-x9yi0t,
-div[role="alert"].st-emotion-cache-x9yi0t {
-    background: #1f0d11 !important;
-    border: 1px solid #FE2C5540 !important;
-    color: #ffb3c1 !important;
-}
-
-.score-block { text-align: center; margin: 1.4rem 0 0.4rem; }
-.score-number {
-    font-family: 'Syne', sans-serif;
-    font-size: 3.8rem;
-    font-weight: 800;
-    background: linear-gradient(135deg, #FE2C55, #25F4EE);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    line-height: 1;
-}
-.score-label {
-    font-size: 0.8rem;
-    color: #555;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    margin-top: 0.2rem;
-}
-
-/* Expander réflexion CoT */
-[data-testid="stExpander"] {
-    background: #0C0C15 !important;
-    border: 1px solid #25F4EE22 !important;
-    border-radius: 16px !important;
-    margin-top: 0.8rem !important;
-}
-[data-testid="stExpander"] summary {
-    font-family: 'DM Sans', sans-serif !important;
-    font-size: 0.85rem !important;
-    color: #25F4EE !important;
-    padding: 0.7rem 1rem !important;
-}
-[data-testid="stExpander"] summary:hover { color: #fff !important; }
-[data-testid="stExpander"] > div > div {
-    padding: 0 1rem 0.8rem !important;
-    font-size: 0.82rem !important;
-    color: #777 !important;
+    border-radius: var(--radius-md) !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 0.92rem !important;
     line-height: 1.65 !important;
-    font-style: italic;
-    white-space: pre-wrap;
+    padding: 1.1rem 1.3rem !important;
+    border-left-width: 3px !important;
 }
 
-/* Badge contexte */
+/* ── Card résultat — wrapper ─────────────────────────────────────── */
+.result-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    padding: 1.4rem;
+    margin-top: 1.2rem;
+    box-shadow: var(--shadow-sm);
+}
+
+/* ── Badge contexte ──────────────────────────────────────────────── */
 .context-badge {
-    display: inline-block;
-    background: linear-gradient(135deg, #0a1a2b, #0d0a1f);
-    border: 1px solid #25F4EE44;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
     border-radius: 50px;
-    padding: 0.3rem 0.9rem;
-    font-size: 0.78rem;
-    color: #25F4EE;
-    margin-bottom: 1rem;
+    padding: 0.3rem 0.85rem;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
     font-weight: 500;
+    margin-bottom: 1.2rem;
 }
 
-/* ── Card Description "L'IA a tout vu" ──────────────────────────── */
+/* ── Card description "Ce que je vois" ──────────────────────────── */
 .desc-card {
-    background: #0e0e1a;
-    border: 1px solid #ffffff0d;
-    border-left: 3px solid #25F4EE;
-    border-radius: 16px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-left: 3px solid var(--accent-warm);
+    border-radius: var(--radius-md);
     padding: 1rem 1.2rem;
-    margin: 1rem 0 0.6rem;
-    position: relative;
+    margin: 1rem 0 0.8rem;
 }
 .desc-card-header {
     font-size: 0.65rem;
     text-transform: uppercase;
     letter-spacing: 2px;
-    color: #25F4EE;
-    font-weight: 700;
-    margin-bottom: 0.5rem;
+    color: var(--accent-warm);
+    font-weight: 600;
+    margin-bottom: 0.55rem;
     display: flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.5rem;
 }
 .desc-card-header::after {
     content: "";
     flex: 1;
     height: 1px;
-    background: linear-gradient(90deg, #25F4EE22, transparent);
+    background: var(--border);
 }
 .desc-card-body {
     font-size: 0.88rem;
-    color: #bbb;
+    color: var(--text-secondary);
     line-height: 1.7;
     font-style: italic;
 }
 .genre-badge {
     display: inline-block;
-    font-size: 0.62rem;
+    font-size: 0.6rem;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
-    font-weight: 700;
+    letter-spacing: 1px;
+    font-weight: 600;
     font-style: normal;
-    padding: 0.15rem 0.55rem;
+    padding: 0.12rem 0.5rem;
     border-radius: 50px;
-    margin-left: 0.5rem;
+    margin-left: 0.4rem;
     vertical-align: middle;
 }
-.genre-masculin  { background: #0a1525; color: #6ab0ff; border: 1px solid #6ab0ff44; }
-.genre-feminin   { background: #25091a; color: #ff80b5; border: 1px solid #ff80b544; }
-.genre-neutre    { background: #131320; color: #aaa;    border: 1px solid #aaa3; }
+.genre-masculin  { background: #EEF4FF; color: #3B6FCC; border: 1px solid #C8D8F4; }
+.genre-feminin   { background: #FFF0F5; color: #CC3B6F; border: 1px solid #F4C8D8; }
+.genre-neutre    { background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border); }
 
-/* ── Bloc erreur visibilité ──────────────────────────────────────── */
-.visibility-error {
-    background: linear-gradient(135deg, #1a0e00, #1a0a0a);
-    border: 1px solid #ff8c0044;
-    border-radius: 18px;
-    padding: 1.3rem 1.5rem;
+/* ── Score ───────────────────────────────────────────────────────── */
+.score-block {
     text-align: center;
-    margin-top: 0.8rem;
+    padding: 1.2rem 0 0.8rem;
 }
-.visibility-error .ve-icon { font-size: 2.2rem; margin-bottom: 0.5rem; }
-.visibility-error .ve-title {
-    font-family: 'Syne', sans-serif;
-    font-size: 1rem;
-    font-weight: 700;
-    color: #ff8c00;
-    margin-bottom: 0.4rem;
+.score-number {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 3.6rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1;
+    letter-spacing: -1px;
 }
-.visibility-error .ve-body {
+.score-label {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    font-weight: 500;
+    margin-top: 0.2rem;
+}
+.score-accent {
+    color: var(--accent-warm);
+}
+
+/* ── Mode Dilemme : comparaison A/B ─────────────────────────────── */
+.dilemme-scores {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.8rem;
+    margin: 1rem 0;
+}
+.dilemme-score-cell {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 0.9rem;
+    text-align: center;
+}
+.dilemme-score-cell.winner {
+    background: var(--success-bg);
+    border-color: var(--success-border);
+}
+.dilemme-score-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--text-muted);
+    font-weight: 600;
+    margin-bottom: 0.3rem;
+}
+.dilemme-score-value {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 2.2rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1;
+}
+.dilemme-score-cell.winner .dilemme-score-value { color: var(--success-text); }
+.winner-badge {
+    display: inline-block;
+    background: var(--success-bg);
+    color: var(--success-text);
+    border: 1px solid var(--success-border);
+    border-radius: 50px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.2rem 0.7rem;
+    margin-top: 0.4rem;
+    letter-spacing: 0.5px;
+}
+
+/* ── Erreur visibilité ───────────────────────────────────────────── */
+.visibility-error {
+    background: var(--warning-bg);
+    border: 1px solid var(--warning-border);
+    border-radius: var(--radius-lg);
+    padding: 1.4rem 1.6rem;
+    text-align: center;
+    margin-top: 1rem;
+}
+.ve-icon { font-size: 1.8rem; margin-bottom: 0.5rem; }
+.ve-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--warning-text);
+    margin-bottom: 0.5rem;
+}
+.ve-body {
     font-size: 0.88rem;
-    color: #997755;
-    line-height: 1.6;
+    color: var(--warning-text);
+    line-height: 1.65;
+    opacity: 0.85;
 }
+
+/* ── Card affiliation ────────────────────────────────────────────── */
 .affil-card {
-    background: linear-gradient(135deg, #0f0f1e, #13131A);
-    border: 1px solid #ffffff14;
-    border-radius: 20px;
-    padding: 1rem 1.2rem;
-    margin-top: 1.2rem;
     display: flex;
     align-items: center;
     gap: 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1rem 1.2rem;
+    margin-top: 1rem;
+    text-decoration: none !important;
+    transition: all 0.2s ease;
     position: relative;
     overflow: hidden;
 }
 .affil-card::before {
     content: "";
     position: absolute;
-    inset: 0;
-    border-radius: 20px;
-    padding: 1.5px;
-    background: linear-gradient(135deg, #FE2C5530, #25F4EE30);
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    pointer-events: none;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--accent-warm);
+    border-radius: 0 2px 2px 0;
+}
+.affil-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+    border-color: var(--accent-warm);
 }
 .affil-emoji {
-    font-size: 2.2rem;
+    font-size: 1.6rem;
     flex-shrink: 0;
-    line-height: 1;
+    width: 2.5rem;
+    text-align: center;
+    color: var(--accent-warm);
+    font-family: 'Playfair Display', serif;
+    font-size: 1.2rem;
+    font-weight: 600;
 }
-.affil-body {
-    flex: 1;
-    min-width: 0;
-}
+.affil-body { flex: 1; min-width: 0; }
 .affil-header {
-    font-size: 0.65rem;
+    font-size: 0.6rem;
     text-transform: uppercase;
-    letter-spacing: 1.8px;
-    color: #FE2C55;
-    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--accent-warm);
+    font-weight: 600;
     margin-bottom: 0.15rem;
 }
 .affil-name {
-    font-family: 'Syne', sans-serif;
-    font-size: 1rem;
-    font-weight: 700;
-    color: #F0F0F0;
+    font-family: 'Playfair Display', serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
     line-height: 1.2;
 }
 .affil-tagline {
-    font-size: 0.78rem;
-    color: #666;
+    font-size: 0.75rem;
+    color: var(--text-muted);
     margin-top: 0.1rem;
 }
 .affil-cta {
-    display: inline-block;
-    background: linear-gradient(135deg, #25F4EE, #00b8b2);
-    color: #0A0A0F !important;
+    flex-shrink: 0;
+    background-color: var(--accent);
+    background-image: none;
+    color: #FFFFFF !important;
+    -webkit-text-fill-color: #FFFFFF !important;
     text-decoration: none !important;
     border-radius: 50px;
-    padding: 0.45rem 1rem;
-    font-family: 'Syne', sans-serif;
-    font-size: 0.8rem;
-    font-weight: 700;
+    padding: 0.4rem 1rem;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 600;
     white-space: nowrap;
-    transition: all 0.25s ease;
-    flex-shrink: 0;
+    transition: background-color 0.2s ease;
+    display: inline-block;
 }
 .affil-cta:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(37, 244, 238, 0.35);
-    color: #0A0A0F !important;
+    background-color: #3D3D38;
+    color: #FFFFFF !important;
+    -webkit-text-fill-color: #FFFFFF !important;
     text-decoration: none !important;
 }
 
-.stripe-btn-wrapper { margin-top: 0.5rem; }
+/* ── Stripe payment button ───────────────────────────────────────── */
+.stripe-btn-wrapper { margin-top: 0.6rem; }
 .stripe-btn {
     display: block;
     width: 100%;
-    padding: 1rem 2rem;
-    background: linear-gradient(135deg, #FE2C55 0%, #d4196b 50%, #25F4EE 100%);
-    background-size: 200% 200%;
-    color: #fff !important;
+    padding: 0.9rem 2rem;
+    background-color: var(--accent);
+    background-image: none;
+    color: #FFFFFF !important;
+    -webkit-text-fill-color: #FFFFFF !important;
     text-decoration: none !important;
     border-radius: 50px;
-    font-family: 'Syne', sans-serif;
-    font-size: clamp(1rem, 4vw, 1.2rem);
-    font-weight: 700;
-    letter-spacing: 0.5px;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 600;
     text-align: center;
-    box-shadow: 0 4px 24px rgba(254, 44, 85, 0.25);
-    transition: all 0.35s cubic-bezier(0.23, 1, 0.32, 1);
-    animation: gradientShift 4s ease infinite;
+    box-shadow: 0 2px 12px rgba(44, 44, 40, 0.18);
+    transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
     box-sizing: border-box;
 }
 .stripe-btn:hover {
-    transform: translateY(-3px) scale(1.03);
-    box-shadow: 0 10px 36px rgba(254, 44, 85, 0.45);
-    color: #fff !important;
+    background-color: #3D3D38;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(44, 44, 40, 0.22);
+    color: #FFFFFF !important;
+    -webkit-text-fill-color: #FFFFFF !important;
     text-decoration: none !important;
 }
-.stripe-btn:active { transform: translateY(0) scale(0.98); }
-.stripe-sub { text-align: center; font-size: 0.72rem; color: #444; margin-top: 0.5rem; }
+.stripe-btn:active {
+    background-color: #1E1E1B;
+    transform: translateY(0);
+    color: #FFFFFF !important;
+    -webkit-text-fill-color: #FFFFFF !important;
+}
+.stripe-sub {
+    text-align: center;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-top: 0.6rem;
+    letter-spacing: 0.2px;
+}
 
+/* ── Bannière paiement validé ────────────────────────────────────── */
 .payment-success-banner {
-    background: linear-gradient(135deg, #0d2b1a, #0a1f2b);
-    border: 1px solid #25F4EE55;
-    border-radius: 18px;
+    background: var(--success-bg);
+    border: 1px solid var(--success-border);
+    border-radius: var(--radius-lg);
     padding: 1.2rem 1.4rem;
     text-align: center;
-    margin-bottom: 1.2rem;
+    margin-bottom: 1.4rem;
 }
-.payment-success-banner .check { font-size: 2rem; margin-bottom: 0.3rem; }
+.payment-success-banner .check { font-size: 1.6rem; margin-bottom: 0.3rem; }
 .payment-success-banner h3 {
-    font-family: 'Syne', sans-serif;
-    font-size: 1.1rem;
-    color: #25F4EE;
+    font-family: 'Playfair Display', serif;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--success-text);
     margin: 0 0 0.3rem;
 }
-.payment-success-banner p { font-size: 0.85rem; color: #888; margin: 0; }
+.payment-success-banner p {
+    font-size: 0.85rem;
+    color: var(--success-text);
+    opacity: 0.75;
+    margin: 0;
+}
 
+/* ── Expander CoT ────────────────────────────────────────────────── */
+[data-testid="stExpander"] {
+    background: var(--surface-2) !important;
+    border: 1px solid var(--border-soft) !important;
+    border-radius: var(--radius-md) !important;
+    margin-top: 0.8rem !important;
+}
+[data-testid="stExpander"] summary {
+    font-family: 'Inter', sans-serif !important;
+    font-size: 0.8rem !important;
+    color: var(--text-secondary) !important;
+    padding: 0.7rem 1rem !important;
+    letter-spacing: 0.2px !important;
+}
+[data-testid="stExpander"] summary:hover { color: var(--text-primary) !important; }
+[data-testid="stExpander"] > div > div {
+    padding: 0 1rem 0.8rem !important;
+    font-size: 0.8rem !important;
+    color: var(--text-muted) !important;
+    line-height: 1.65 !important;
+    font-style: italic;
+    white-space: pre-wrap;
+}
+
+/* ── Footer ──────────────────────────────────────────────────────── */
 .custom-footer {
     text-align: center;
-    margin-top: 3rem;
+    margin-top: 3.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
     font-size: 0.72rem;
-    color: #333;
+    color: var(--text-muted);
     letter-spacing: 0.5px;
 }
-.custom-footer span {
-    background: linear-gradient(90deg, #FE2C55, #25F4EE);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    font-weight: 600;
-}
+.custom-footer strong { color: var(--text-secondary); font-weight: 600; }
 
+/* ── Responsive ──────────────────────────────────────────────────── */
 @media (max-width: 480px) {
-    .block-container { padding: 1rem 0.8rem 5rem !important; }
-    .app-title { font-size: 2.4rem; }
-    .result-card { padding: 0.9rem; }
-    [data-testid="stImage"] img { max-height: 300px; }
-    div.stButton > button:first-child { padding: 0.9rem 1.5rem !important; font-size: 1rem !important; }
-    .stripe-btn { padding: 0.9rem 1.5rem; font-size: 1rem; }
+    .block-container { padding: 0 0.8rem 5rem !important; }
+    .app-title { font-size: 2rem; }
+    .result-card { padding: 1rem; }
     .score-number { font-size: 3rem; }
+    .dilemme-scores { grid-template-columns: 1fr; }
+    div.stButton > button:first-child { padding: 0.85rem 1.5rem !important; }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -918,10 +1148,14 @@ div[role="alert"].st-emotion-cache-x9yi0t {
 
 st.markdown("""
 <div class="app-header">
-    <p class="app-title">🔥 Juge Mon Style</p>
-    <p class="app-subtitle">L'IA qui n'a aucun filtre.<br>Prêt à te faire tailler&nbsp;? 👇</p>
+    <p class="app-eyebrow">Analyse vestimentaire par IA · Gratuit &amp; Premium</p>
+    <h1 class="app-title">Juge <em>Mon</em><br>Style</h1>
+    <p class="app-subtitle">
+        Un regard expert, bienveillant et personnalisé sur votre tenue —
+        comme si votre meilleur(e) ami(e) était styliste.
+    </p>
 </div>
-<hr class="neon-divider">
+<hr class="header-divider">
 """, unsafe_allow_html=True)
 
 
@@ -932,163 +1166,210 @@ st.markdown("""
 if st.session_state.a_paye:
     st.markdown("""
 <div class="payment-success-banner">
-    <div class="check">✅</div>
-    <h3>Paiement validé !</h3>
-    <p>Uploade ta photo ci-dessous — ton Roast arrive dans les secondes qui suivent.</p>
+    <div class="check">✓</div>
+    <h3>Paiement confirmé</h3>
+    <p>Uploadez votre photo ci-dessous — le Roast arrive dans les secondes qui suivent.</p>
 </div>
 """, unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 9 — UPLOAD IMAGE
+#  SECTION 9 — INTERFACE PRINCIPALE
 # ══════════════════════════════════════════════════════════════════════════════
 
-uploaded_file = st.file_uploader(
-    "📸  Uploade ton meilleur (ou pire) flow",
-    type=["png", "jpg", "jpeg"],
-    label_visibility="visible",
+# ── 9a. Choix du mode ─────────────────────────────────────────────────────────
+st.markdown('<span class="section-label">Mode d\'analyse</span>', unsafe_allow_html=True)
+mode = st.radio(
+    label="Mode d'analyse",
+    options=[
+        "✦ Analyse Styliste — Gratuit",
+        "⚡ Roast Vestimentaire — 1,50 €",
+    ],
+    index=1 if st.session_state.a_paye else 0,
+    label_visibility="collapsed",
+)
+is_roast = "Roast" in mode
+
+# ── 9b. Upload(s) ─────────────────────────────────────────────────────────────
+st.markdown('<span class="section-label">Votre tenue</span>', unsafe_allow_html=True)
+
+col_a, col_b = st.columns(2, gap="small")
+with col_a:
+    uploaded_a = st.file_uploader(
+        "Tenue A",
+        type=["png", "jpg", "jpeg"],
+        key="upload_a",
+        label_visibility="visible",
+    )
+with col_b:
+    uploaded_b = st.file_uploader(
+        "Tenue B  *(optionnel — mode Dilemme)*",
+        type=["png", "jpg", "jpeg"],
+        key="upload_b",
+        label_visibility="visible",
+    )
+
+has_a = uploaded_a is not None
+has_b = uploaded_b is not None
+is_dilemme = has_a and has_b and not is_roast  # Dilemme : 2 photos, mode non-Roast
+
+# ── 9c. Situation ─────────────────────────────────────────────────────────────
+st.markdown('<span class="section-label">Occasion</span>', unsafe_allow_html=True)
+
+situation_index = 0
+try:
+    pill_choix = st.pills(
+        label="Situation",
+        options=SITUATION_LABELS,
+        selection_mode="single",
+        default=SITUATION_LABELS[0],
+        label_visibility="collapsed",
+    )
+    if pill_choix is None:
+        pill_choix = SITUATION_LABELS[0]
+    situation_index = SITUATION_LABELS.index(pill_choix)
+except AttributeError:
+    pill_choix = st.selectbox(
+        label="Situation",
+        options=SITUATION_LABELS,
+        label_visibility="collapsed",
+    )
+    situation_index = SITUATION_LABELS.index(pill_choix)
+
+situation_choisie = SITUATIONS[situation_index]
+situation_desc = situation_choisie["desc"]
+
+# ── 9d. Intention de style ────────────────────────────────────────────────────
+st.markdown('<span class="section-label">Intention de style *(optionnel)*</span>', unsafe_allow_html=True)
+intention = st.text_input(
+    label="Intention",
+    placeholder="Ex : paraître professionnel mais accessible, affirmer ma personnalité, affiner ma silhouette…",
+    label_visibility="collapsed",
+    max_chars=200,
 )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 10 — LOGIQUE PRINCIPALE
+#  SECTION 10 — APERÇU & CTA
 # ══════════════════════════════════════════════════════════════════════════════
 
-if uploaded_file is not None:
+if has_a:
+    image_a = Image.open(uploaded_a)
+    image_b = Image.open(uploaded_b) if has_b else None
 
-    # ── 10a. Aperçu + choix du mode ───────────────────────────────────────────
-    st.markdown('<div class="result-card">', unsafe_allow_html=True)
+    # Aperçu
+    st.markdown("")
+    if is_dilemme:
+        prev_a, prev_b = st.columns(2, gap="small")
+        with prev_a:
+            st.image(image_a, caption="Tenue A", use_container_width=True)
+        with prev_b:
+            st.image(image_b, caption="Tenue B", use_container_width=True)
+    else:
+        st.image(image_a, caption="Votre tenue", use_container_width=True)
 
-    col1, col2 = st.columns([1, 1], gap="medium")
+    # Info mode
+    if is_dilemme:
+        st.info("**Mode Dilemme activé** — Deux tenues détectées. L'IA va comparer et choisir pour vous.", icon="⚡")
 
-    with col1:
-        image = Image.open(uploaded_file)
-        st.image(image, caption="C'est ça ta tenue ?", use_container_width=True)
-
-    with col2:
-        st.markdown('<span class="mode-label">Choisis la violence :</span>', unsafe_allow_html=True)
-        mode = st.radio(
-            label="Mode d'analyse",
-            options=[
-                "💧 Drip Check — Gratuit",
-                "😈 Roast Vestimentaire — 1,50 €",
-            ],
-            index=1 if st.session_state.a_paye else 0,
-            label_visibility="collapsed",
-        )
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # ── 10b. Sélecteur de situation (contexte utilisateur) ────────────────────
-    st.markdown('<span class="section-label">📍 Où tu vas avec ça ?</span>', unsafe_allow_html=True)
-
-    situation_index = 0
-    try:
-        pill_choix = st.pills(
-            label="Situation",
-            options=SITUATION_LABELS,
-            selection_mode="single",
-            default=SITUATION_LABELS[0],
-            label_visibility="collapsed",
-        )
-        if pill_choix is None:
-            pill_choix = SITUATION_LABELS[0]
-        situation_index = SITUATION_LABELS.index(pill_choix)
-    except AttributeError:
-        # Fallback pour les versions de Streamlit sans st.pills
-        pill_choix = st.selectbox(
-            label="Situation",
-            options=SITUATION_LABELS,
-            label_visibility="collapsed",
-        )
-        situation_index = SITUATION_LABELS.index(pill_choix)
-
-    situation_choisie = SITUATIONS[situation_index]
-    situation_desc = situation_choisie["desc"]
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    is_roast = "Roast" in mode
-
-    # ── 10c. CTA dynamique selon mode et état paiement ────────────────────────
+    # CTA
     lancer_analyse = False
-
     if not is_roast:
-        if st.button("🚀  ANALYSER MON DRIP"):
+        label_btn = "Comparer les deux tenues" if is_dilemme else "Analyser ma tenue"
+        if st.button(f"✦  {label_btn.upper()}"):
             lancer_analyse = True
     else:
         if st.session_state.a_paye:
-            if st.button("💀  LANCER MON ROAST"):
+            if st.button("⚡  LANCER LE ROAST"):
                 lancer_analyse = True
         else:
             st.markdown(f"""
 <div class="stripe-btn-wrapper">
     <a href="{STRIPE_LINK}" class="stripe-btn" target="_blank" rel="noopener noreferrer">
-        💳&nbsp;&nbsp;PAYER 1,50 € ET SE FAIRE ROASTER
+        Payer 1,50 € et accéder au Roast
     </a>
-    <p class="stripe-sub">Paiement sécurisé Stripe · Résultat immédiat après confirmation</p>
+    <p class="stripe-sub">Paiement sécurisé par Stripe · Résultat immédiat</p>
 </div>
 """, unsafe_allow_html=True)
 
-    # ── 10d. Analyse IA ───────────────────────────────────────────────────────
+
+    # ══════════════════════════════════════════════════════════════════════════
+    #  SECTION 10d — ANALYSE IA
+    # ══════════════════════════════════════════════════════════════════════════
+
     if lancer_analyse:
 
-        with st.spinner("L'IA réfléchit à ta tenue... (c'est pas rapide, le jugement)"):
+        spinner_msg = (
+            "Comparaison des deux tenues en cours…" if is_dilemme
+            else "Analyse de votre tenue en cours…" if not is_roast
+            else "Le verdict est en préparation…"
+        )
 
-            # 1. Compression image (512x512 / qualité 60 → 85 tokens fixes)
-            base64_image = compress_image_to_base64(image)
+        with st.spinner(spinner_msg):
 
-            # 2. Construction du prompt avec contexte injecté
-            prompt = construire_prompt(is_roast, situation_desc)
+            # 1. Compression HD (1024px / q85 / detail=high)
+            images_b64 = [compress_image_to_base64(image_a)]
+            if is_dilemme:
+                images_b64.append(compress_image_to_base64(image_b))
 
-            # 3. Appel API OpenAI
+            # 2. Sélection du mode de prompt
+            prompt_mode = "dilemme" if is_dilemme else ("roast" if is_roast else "drip")
+            prompt = construire_prompt(prompt_mode, situation_desc, intention)
+
             try:
-                reponse_brute = appeler_openai(base64_image, prompt)
+                # 3. Appel OpenAI Vision HD
+                reponse_brute = appeler_openai(prompt, images_b64)
 
-                # 4. Extraction du CoT (<reflexion>) et nettoyage
+                # 4. Extraction CoT + parsing
                 reflexion_text, reponse_propre = extraire_reflexion(reponse_brute)
-
-                # 5. Parsing : nouveau format 7-8 champs
                 r = parser_reponse(reponse_propre)
 
-                # 6. Court-circuit si l'IA signale une erreur de visibilité
+                # 5. Consommation crédit Roast
+                if is_roast and st.session_state.a_paye:
+                    st.session_state.a_paye = False
+
+                # ── GESTION ERREUR VISIBILITÉ ──────────────────────────────
                 if r["visibilite"].startswith("erreur"):
-                    raison = r["visibilite"].replace("erreur:", "").strip()
-                    message_ia = r["description"] or raison
-                    titre_erreur = (
-                        "📷 Photo illisible" if not is_roast
-                        else "📷 Le Commissaire refuse de travailler dans le noir"
-                    )
+                    message_ia = r.get("description") or r["visibilite"].replace("erreur:", "").strip()
+                    titre_err = "Photo insuffisante" if not is_roast else "Photo irrecevable"
                     st.markdown(f"""
 <div class="visibility-error">
-    <div class="ve-icon">{"🔍" if not is_roast else "😤"}</div>
-    <div class="ve-title">{titre_erreur}</div>
+    <div class="ve-icon">{"📷" if not is_roast else "🔍"}</div>
+    <div class="ve-title">{titre_err}</div>
     <div class="ve-body">{message_ia}</div>
 </div>
 """, unsafe_allow_html=True)
-                    # On affiche quand même le CoT si disponible
-                    if reflexion_text:
-                        with st.expander("🧠 Voir le raisonnement de l'IA"):
-                            st.markdown(reflexion_text)
 
-                else:
-                    # Résultat normal — tenue bien visible
+                # ── MODE DILEMME ───────────────────────────────────────────
+                elif r.get("mode") == "dilemme":
 
-                    # 6. Consommation du crédit Roast (une seule utilisation)
-                    if is_roast and st.session_state.a_paye:
-                        st.session_state.a_paye = False
-
-                    # 7. Badge de contexte
+                    # Badge occasion
                     st.markdown(
-                        f'<div class="context-badge">'
-                        f'{situation_choisie["emoji"]} Analysé pour : {situation_choisie["label"]}'
-                        f"</div>",
+                        f'<div class="context-badge">{situation_choisie["emoji"]} '
+                        f'{situation_choisie["label"]}</div>',
                         unsafe_allow_html=True,
                     )
 
-                    # 8. Card "Description détaillée — preuve par l'image"
-                    if r["description"]:
-                        label_genre = r["genre"]
+                    # Scores A vs B
+                    gagnante = r.get("gagnante", "A").upper()
+                    st.markdown(f"""
+<div class="dilemme-scores">
+    <div class="dilemme-score-cell {"winner" if gagnante == "A" else ""}">
+        <div class="dilemme-score-label">Tenue A {"✓ Gagnante" if gagnante == "A" else ""}</div>
+        <div class="dilemme-score-value">{r.get("score_a","?")}</div>
+        {"<div class='winner-badge'>Recommandée</div>" if gagnante == "A" else ""}
+    </div>
+    <div class="dilemme-score-cell {"winner" if gagnante == "B" else ""}">
+        <div class="dilemme-score-label">Tenue B {"✓ Gagnante" if gagnante == "B" else ""}</div>
+        <div class="dilemme-score-value">{r.get("score_b","?")}</div>
+        {"<div class='winner-badge'>Recommandée</div>" if gagnante == "B" else ""}
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+                    # Descriptions A et B
+                    if r.get("desc_a"):
+                        label_genre = r.get("genre", "neutre")
                         badge_html = (
                             f'<span class="genre-badge genre-{label_genre}">'
                             f'{"♂" if label_genre == "masculin" else "♀" if label_genre == "feminin" else "◈"}'
@@ -1096,39 +1377,26 @@ if uploaded_file is not None:
                         )
                         st.markdown(f"""
 <div class="desc-card">
-    <div class="desc-card-header">🔍 Ce que l'IA voit{badge_html}</div>
-    <div class="desc-card-body">{r["description"]}</div>
+    <div class="desc-card-header">Tenue A — détail{badge_html}</div>
+    <div class="desc-card-body">{r["desc_a"]}</div>
+</div>
+<div class="desc-card" style="margin-top:0.5rem">
+    <div class="desc-card-header">Tenue B — détail</div>
+    <div class="desc-card-body">{r["desc_b"]}</div>
 </div>
 """, unsafe_allow_html=True)
 
-                    # 9. Score en grand
-                    st.markdown(f"""
-<div class="score-block">
-    <div class="score-number">{r["score"]}</div>
-    <div class="score-label">Style Score</div>
-</div>
-""", unsafe_allow_html=True)
+                    # Analyse comparative
+                    st.success(f"**Analyse comparative**\n\n{r['analyse']}")
 
-                    # 10. Résultat principal (Drip ou Roast)
-                    icone = "💡" if not is_roast else "☠️"
-                    corps = f"**{r['titre']}**\n\n{r['analyse']}"
-                    if r["conseil"]:
-                        corps += f"\n\n{icone} *{r['conseil']}*"
-
-                    if not is_roast:
-                        st.success(corps)
-                        st.balloons()
-                    else:
-                        st.error(corps)
-
-                    # 11. Card affiliation (mode Drip uniquement, ID valide du catalogue)
-                    if not is_roast and r["accessoire"] and r["accessoire"] in AFFILIATE_CATALOG:
+                    # Card affiliation
+                    if r.get("accessoire") and r["accessoire"] in AFFILIATE_CATALOG:
                         prod = AFFILIATE_CATALOG[r["accessoire"]]
                         st.markdown(f"""
 <a href="{prod['affiliate_url']}" target="_blank" rel="noopener noreferrer sponsored" class="affil-card">
     <div class="affil-emoji">{prod['emoji']}</div>
     <div class="affil-body">
-        <div class="affil-header">✦ Le styliste recommande</div>
+        <div class="affil-header">Notre sélection</div>
         <div class="affil-name">{prod['name']}</div>
         <div class="affil-tagline">{prod['tagline']}</div>
     </div>
@@ -1136,15 +1404,108 @@ if uploaded_file is not None:
 </a>
 """, unsafe_allow_html=True)
 
-                    # 12. Réflexion CoT dans un expander
-                    if reflexion_text:
-                        with st.expander("🧠 Voir le raisonnement de l'IA"):
-                            st.markdown(reflexion_text)
+                # ── MODE DRIP (analyse classique) ──────────────────────────
+                elif r.get("mode") in ("drip", None) and not is_roast:
 
-            except Exception:
+                    # Badge occasion
+                    st.markdown(
+                        f'<div class="context-badge">{situation_choisie["emoji"]} '
+                        f'{situation_choisie["label"]}</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                    # Card description
+                    if r.get("description"):
+                        label_genre = r.get("genre", "neutre")
+                        badge_html = (
+                            f'<span class="genre-badge genre-{label_genre}">'
+                            f'{"♂" if label_genre == "masculin" else "♀" if label_genre == "feminin" else "◈"}'
+                            f" style {label_genre}</span>"
+                        )
+                        st.markdown(f"""
+<div class="desc-card">
+    <div class="desc-card-header">Ce que l'IA voit{badge_html}</div>
+    <div class="desc-card-body">{r["description"]}</div>
+</div>
+""", unsafe_allow_html=True)
+
+                    # Score
+                    st.markdown(f"""
+<div class="score-block">
+    <div class="score-number">{r["score"]}</div>
+    <div class="score-label">Score de style</div>
+</div>
+""", unsafe_allow_html=True)
+
+                    # Verdict
+                    corps = f"**{r['titre']}**\n\n{r['analyse']}"
+                    if r.get("conseil"):
+                        corps += f"\n\n💡 *{r['conseil']}*"
+                    st.success(corps)
+
+                    # Card affiliation
+                    if r.get("accessoire") and r["accessoire"] in AFFILIATE_CATALOG:
+                        prod = AFFILIATE_CATALOG[r["accessoire"]]
+                        st.markdown(f"""
+<a href="{prod['affiliate_url']}" target="_blank" rel="noopener noreferrer sponsored" class="affil-card">
+    <div class="affil-emoji">{prod['emoji']}</div>
+    <div class="affil-body">
+        <div class="affil-header">Notre sélection</div>
+        <div class="affil-name">{prod['name']}</div>
+        <div class="affil-tagline">{prod['tagline']}</div>
+    </div>
+    <div class="affil-cta">Voir →</div>
+</a>
+""", unsafe_allow_html=True)
+
+                # ── MODE ROAST ─────────────────────────────────────────────
+                else:
+
+                    # Badge occasion
+                    st.markdown(
+                        f'<div class="context-badge">{situation_choisie["emoji"]} '
+                        f'{situation_choisie["label"]}</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                    # Description (ton sarcastique)
+                    if r.get("description"):
+                        label_genre = r.get("genre", "neutre")
+                        badge_html = (
+                            f'<span class="genre-badge genre-{label_genre}">'
+                            f'{"♂" if label_genre == "masculin" else "♀" if label_genre == "feminin" else "◈"}'
+                            f" style {label_genre}</span>"
+                        )
+                        st.markdown(f"""
+<div class="desc-card">
+    <div class="desc-card-header">Ce que l'IA voit{badge_html}</div>
+    <div class="desc-card-body">{r["description"]}</div>
+</div>
+""", unsafe_allow_html=True)
+
+                    # Score
+                    st.markdown(f"""
+<div class="score-block">
+    <div class="score-number">{r["score"]}</div>
+    <div class="score-label">Score de style</div>
+</div>
+""", unsafe_allow_html=True)
+
+                    # Roast
+                    corps = f"**{r['titre']}**\n\n{r['analyse']}"
+                    if r.get("conseil"):
+                        corps += f"\n\n*{r['conseil']}*"
+                    st.error(corps)
+
+                # ── CoT expander (tous modes) ──────────────────────────────
+                if reflexion_text:
+                    with st.expander("Voir le raisonnement de l'IA"):
+                        st.markdown(reflexion_text)
+
+            except Exception as e:
                 st.error(
-                    "Une erreur s'est produite lors de la connexion à l'IA. "
-                    "Vérifie que ton compte OpenAI dispose bien de crédit."
+                    "Une erreur est survenue lors de la connexion à l'IA. "
+                    "Vérifiez que votre compte OpenAI dispose bien de crédit."
                 )
 
 
@@ -1154,6 +1515,6 @@ if uploaded_file is not None:
 
 st.markdown("""
 <div class="custom-footer">
-    Fait avec 🔥 par <span>Juge Mon Style</span> · Powered by AI
+    <strong>Juge Mon Style</strong> · Analyse vestimentaire par IA · Tous droits réservés
 </div>
 """, unsafe_allow_html=True)
