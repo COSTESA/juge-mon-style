@@ -1,17 +1,29 @@
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║          ✦  MON STYLISTE DE POCHE  —  app.py                    ║
+║          ✦  JUGE MON STYLE  —  app.py                           ║
 ║   Analyse vestimentaire IA · Premium · Smart Friend             ║
 ╚══════════════════════════════════════════════════════════════════╝
+
+Changelog v1.4 :
+  - [FIX]     Bug HTML Mode Dilemme : fuite de balises dans st.markdown corrigée
+               en sortant les expressions conditionnelles des f-strings imbriquées.
+  - [FEATURE] Analyses plus détaillées : prompts mis à jour pour 5-6 phrases riches
+               qui exploitent le raisonnement privé <reflexion>.
+  - [FEATURE] Rate Limiting : 3 analyses gratuites par jour via st.session_state
+               (clé `analyses_today` + `last_analysis_date`). Roast non limité.
+  - [FEATURE] Bouton "Générer ma Story" : génération d'une image 1080×1920 px
+               (format 9:16) avec Pillow + st.download_button.
 """
 
 # ─── IMPORTS ──────────────────────────────────────────────────────────────────
 import io
 import re
 import base64
+import textwrap
+from datetime import date
 
 import streamlit as st
-from PIL import Image, ImageOps
+from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
 from openai import OpenAI
 
 
@@ -31,8 +43,11 @@ st.set_page_config(
 #  SECTION 1 — CONSTANTES
 # ══════════════════════════════════════════════════════════════════════════════
 
-STRIPE_LINK = "https://buy.stripe.com/ton_lien_ici"
+STRIPE_LINK = "https://buy.stripe.com/test_14A00i1Qhcox7nI9qV77O00"
 # Stripe : URL de confirmation → https://ton-app.streamlit.app/?payment=success
+
+# ── Limite d'analyses gratuites par jour ──────────────────────────────────────
+MAX_ANALYSES_PAR_JOUR = 3
 
 SITUATIONS = [
     # ── Quotidien & détente ────────────────────────────────────────────────────
@@ -69,41 +84,113 @@ SITUATIONS = [
 SITUATION_LABELS = [f"{s['emoji']} {s['label']}" for s in SITUATIONS]
 
 AFFILIATE_CATALOG = {
-    "chain_argent": {
-        "name": "Chaîne fine en argent",
+    # ── Bijoux & accessoires ─────────────────────────────────────────────────
+    "bague_chunky": {
+        "name": "Bague chunky statement",
+        "emoji": "◈",
+        "tagline": "Le détail qui parle avant toi",
+        "affiliate_url": "https://www.example.com/bague-chunky?ref=monstyliste",
+    },
+    "collier_perles_y2k": {
+        "name": "Collier de perles Y2K",
         "emoji": "✦",
-        "tagline": "Le détail qui signe une tenue",
-        "affiliate_url": "https://www.example.com/chain-argent?ref=monstyliste",
+        "tagline": "Coucou 2003, ravie de te revoir",
+        "affiliate_url": "https://www.example.com/collier-perles?ref=monstyliste",
     },
-    "sneakers_blanches": {
-        "name": "Sneakers blanches premium",
+    "bracelet_manchette": {
+        "name": "Bracelet manchette doré",
         "emoji": "◯",
-        "tagline": "La base absolue de toute bonne tenue",
-        "affiliate_url": "https://www.example.com/sneakers-blanches?ref=monstyliste",
+        "tagline": "Une pièce, tout le caractère",
+        "affiliate_url": "https://www.example.com/manchette?ref=monstyliste",
     },
-    "casquette_minimale": {
-        "name": "Casquette structurée",
+    # ── Lunettes ─────────────────────────────────────────────────────────────
+    "lunettes_y2k": {
+        "name": "Lunettes teintées Y2K",
+        "emoji": "◉",
+        "tagline": "Le filtre soleil qui clôt tout débat",
+        "affiliate_url": "https://www.example.com/lunettes-y2k?ref=monstyliste",
+    },
+    "lunettes_cat_eye": {
+        "name": "Lunettes cat-eye vintage",
+        "emoji": "◉",
+        "tagline": "Drama facial instantané",
+        "affiliate_url": "https://www.example.com/cat-eye?ref=monstyliste",
+    },
+    # ── Chaussures ───────────────────────────────────────────────────────────
+    "sneakers_vintage": {
+        "name": "Sneakers running vintage",
         "emoji": "△",
-        "tagline": "Structure et caractère en un seul geste",
-        "affiliate_url": "https://www.example.com/casquette?ref=monstyliste",
+        "tagline": "La base qui élève tout le reste",
+        "affiliate_url": "https://www.example.com/sneakers-vintage?ref=monstyliste",
+    },
+    "mary_janes": {
+        "name": "Mary Janes chunky",
+        "emoji": "△",
+        "tagline": "Douceur en dessous, impact au-dessus",
+        "affiliate_url": "https://www.example.com/mary-janes?ref=monstyliste",
+    },
+    "boots_chelsea": {
+        "name": "Chelsea boots cuir",
+        "emoji": "△",
+        "tagline": "La chaussure qui structure une silhouette",
+        "affiliate_url": "https://www.example.com/chelsea-boots?ref=monstyliste",
+    },
+    # ── Vestes & couches ─────────────────────────────────────────────────────
+    "veste_gorpcore": {
+        "name": "Veste Gorpcore technique",
+        "emoji": "□",
+        "tagline": "Quand la randonnée devient un esthétique",
+        "affiliate_url": "https://www.example.com/veste-gorpcore?ref=monstyliste",
     },
     "veste_oversize": {
-        "name": "Veste oversize",
+        "name": "Veste blazer oversize",
         "emoji": "□",
         "tagline": "La pièce qui structure toute la silhouette",
         "affiliate_url": "https://www.example.com/veste-oversize?ref=monstyliste",
     },
-    "sac_tote": {
-        "name": "Tote bag en canvas",
-        "emoji": "◇",
-        "tagline": "Élégant, sobre et infiniment pratique",
-        "affiliate_url": "https://www.example.com/tote-bag?ref=monstyliste",
+    "cardigan_knit": {
+        "name": "Cardigan knit texturé",
+        "emoji": "□",
+        "tagline": "Le confort qui n'abandonne pas le style",
+        "affiliate_url": "https://www.example.com/cardigan-knit?ref=monstyliste",
     },
-    "lunettes_soleil": {
-        "name": "Lunettes de soleil",
-        "emoji": "◉",
-        "tagline": "L'accessoire qui clôt tout débat stylistique",
-        "affiliate_url": "https://www.example.com/lunettes?ref=monstyliste",
+    # ── Sacs ─────────────────────────────────────────────────────────────────
+    "sac_hobo": {
+        "name": "Sac hobo en cuir souple",
+        "emoji": "◇",
+        "tagline": "Structure molle, impact maximal",
+        "affiliate_url": "https://www.example.com/sac-hobo?ref=monstyliste",
+    },
+    "micro_bag": {
+        "name": "Micro bag minimaliste",
+        "emoji": "◇",
+        "tagline": "Moins c'est plus — surtout ici",
+        "affiliate_url": "https://www.example.com/micro-bag?ref=monstyliste",
+    },
+    "sac_tote_canvas": {
+        "name": "Tote bag canvas premium",
+        "emoji": "◇",
+        "tagline": "Sobre, utile et infiniment stylé",
+        "affiliate_url": "https://www.example.com/tote-canvas?ref=monstyliste",
+    },
+    # ── Headwear & divers ─────────────────────────────────────────────────────
+    "casquette_trucker": {
+        "name": "Casquette trucker rétro",
+        "emoji": "△",
+        "tagline": "Un clin d'œil qui change tout",
+        "affiliate_url": "https://www.example.com/trucker-cap?ref=monstyliste",
+    },
+    "bandeau_satin": {
+        "name": "Bandeau satin imprimé",
+        "emoji": "✦",
+        "tagline": "Mini accessoire, maxi effet",
+        "affiliate_url": "https://www.example.com/bandeau-satin?ref=monstyliste",
+    },
+    "ceinture_large": {
+        "name": "Ceinture large à boucle dorée",
+        "emoji": "◈",
+        "tagline": "Définit la taille, redéfinit la tenue",
+        "affiliate_url": "https://www.example.com/ceinture-large?ref=monstyliste",
     },
 }
 
@@ -170,7 +257,7 @@ def appeler_openai(prompt: str, images_b64: list) -> str:
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
-        max_tokens=900,
+        max_tokens=1200,  # Augmenté pour les analyses plus détaillées
         messages=[{"role": "user", "content": content}],
     )
     return response.choices[0].message.content
@@ -291,7 +378,340 @@ def construire_prompt(mode: str, situation_desc: str, intention: str) -> str:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 4 — PROMPTS IA
+#  SECTION 3b — RATE LIMITING (3 analyses gratuites / jour)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def init_rate_limit():
+    """Initialise les clés de suivi dans st.session_state si elles n'existent pas."""
+    today_str = date.today().isoformat()
+    if "last_analysis_date" not in st.session_state:
+        st.session_state.last_analysis_date = today_str
+        st.session_state.analyses_today = 0
+    # Remise à zéro si nouveau jour
+    elif st.session_state.last_analysis_date != today_str:
+        st.session_state.last_analysis_date = today_str
+        st.session_state.analyses_today = 0
+
+
+def peut_analyser() -> bool:
+    """Retourne True si l'utilisateur n'a pas encore atteint sa limite du jour."""
+    return st.session_state.analyses_today < MAX_ANALYSES_PAR_JOUR
+
+
+def incrementer_compteur():
+    """Incrémente le compteur d'analyses du jour."""
+    st.session_state.analyses_today += 1
+
+
+def analyses_restantes() -> int:
+    """Retourne le nombre d'analyses gratuites restantes pour aujourd'hui."""
+    return max(0, MAX_ANALYSES_PAR_JOUR - st.session_state.analyses_today)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  SECTION 3c — GÉNÉRATION STORY (Pillow 9:16 Instagram/TikTok)
+# ══════════════════════════════════════════════════════════════════════════════
+def generer_phrase_story(analyse: str) -> str:
+    """
+    Demande à l'IA de condenser l'analyse en une phrase unique,
+    punchy et pensée pour les réseaux sociaux.
+    Fallback : résume manuellement sur la 1ère phrase nettoyée.
+    """
+    if not analyse or not analyse.strip():
+        return "Mon style, ma signature. ✦"
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            max_tokens=80,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Tu es un copywriter mode ultra-concis. "
+                        "Résume l'analyse de style donnée en UNE SEULE phrase "
+                        "percutante (max 12 mots), sans hashtag, sans guillemets, "
+                        "sans ponctuation finale. Écris uniquement la phrase, rien d'autre."
+                    ),
+                },
+                {"role": "user", "content": analyse},
+            ],
+        )
+        phrase = resp.choices[0].message.content.strip().strip('"').strip("'")
+        # Sécurité : si l'IA hallucine plus de 100 caractères, on tronque proprement
+        if len(phrase) > 100:
+            phrase = phrase[:97].rstrip() + "…"
+        return phrase
+    except Exception:
+        # Fallback silencieux : 1ère phrase de l'analyse
+        premiere = re.split(r'(?<=[.!?])\s', analyse.strip())[0]
+        return premiere[:90].rstrip() + ("…" if len(premiere) > 90 else "")
+
+def charger_police(taille: int):
+    """
+    Charge une police système avec fallback robuste.
+    Essaie plusieurs chemins communs avant de tomber sur la police par défaut PIL.
+    """
+    polices_candidates = [
+        # Linux / Streamlit Cloud
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+        # macOS
+        "/System/Library/Fonts/Helvetica.ttc",
+        "/System/Library/Fonts/SFProDisplay-Bold.otf",
+        # Windows
+        "C:/Windows/Fonts/arialbd.ttf",
+        "C:/Windows/Fonts/arial.ttf",
+    ]
+    for chemin in polices_candidates:
+        try:
+            return ImageFont.truetype(chemin, taille)
+        except (IOError, OSError):
+            continue
+    # Fallback : police bitmap par défaut (toujours disponible)
+    return ImageFont.load_default()
+
+
+def charger_police_light(taille: int):
+    """Version light/regular de la police pour les corps de texte."""
+    polices_candidates = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+        "C:/Windows/Fonts/arial.ttf",
+    ]
+    for chemin in polices_candidates:
+        try:
+            return ImageFont.truetype(chemin, taille)
+        except (IOError, OSError):
+            continue
+    return ImageFont.load_default()
+
+
+def generer_story(image_pil: Image.Image, score: str, titre: str, analyse: str) -> bytes:
+    """
+    Génère une image Story 9:16 (1080×1920 px) — design premium refonte :
+      - Photo pleine largeur sur 65 % de la hauteur avec dégradé profond
+      - Pastille score dorée centrée à cheval sur la photo et la zone texte
+      - Phrase-résumé IA ultra-courte (1 phrase, générée par GPT)
+      - Titre du style en petites capitales élégantes
+      - Footer branding centré, typographie fine
+    """
+    LARGEUR, HAUTEUR   = 1080, 1920
+    ZONE_IMAGE_H       = int(HAUTEUR * 0.62)   # 62 % pour la photo (plus immersif)
+    COULEUR_FOND       = (14, 13, 11)           # Noir profond quasi-absolu
+    COULEUR_ACCENT     = (185, 148, 95)         # Or chaud premium
+    COULEUR_ACCENT2    = (210, 175, 120)        # Or clair pour highlights
+    COULEUR_TEXTE      = (240, 238, 232)        # Blanc cassé doux
+    COULEUR_MUTED      = (120, 116, 108)        # Gris chaud discret
+    COULEUR_DIVIDER    = (45, 43, 38)           # Séparateur très subtil
+
+    # ── Canvas ───────────────────────────────────────────────────────────────
+    story = Image.new("RGB", (LARGEUR, HAUTEUR), COULEUR_FOND)
+    draw  = ImageDraw.Draw(story)
+
+    # ── Photo utilisateur ────────────────────────────────────────────────────
+    img = image_pil.copy().convert("RGB")
+    ratio_cible = LARGEUR / ZONE_IMAGE_H
+    w, h = img.size
+    ratio_actuel = w / h
+
+    if ratio_actuel > ratio_cible:
+        new_w = int(h * ratio_cible)
+        left = (w - new_w) // 2
+        img = img.crop((left, 0, left + new_w, h))
+    else:
+        new_h = int(w / ratio_cible)
+        img = img.crop((0, 0, w, new_h))
+
+    img = img.resize((LARGEUR, ZONE_IMAGE_H), Image.LANCZOS)
+
+    # Dégradé bas : fondu exponentiel sur 42 % du bas → noir total
+    fondu = Image.new("L", (LARGEUR, ZONE_IMAGE_H), 255)
+    px_fondu = fondu.load()
+    zone_fondu = int(ZONE_IMAGE_H * 0.42)
+    debut_fondu = ZONE_IMAGE_H - zone_fondu
+    for y in range(debut_fondu, ZONE_IMAGE_H):
+        t = (y - debut_fondu) / zone_fondu
+        alpha = int(255 * (1 - t ** 1.6))
+        for x in range(LARGEUR):
+            px_fondu[x, y] = alpha
+
+    # Vignette latérale : masque qui assombrit les bords gauche/droite
+    vignette = Image.new("L", (LARGEUR, ZONE_IMAGE_H), 255)
+    pv = vignette.load()
+    for x in range(LARGEUR):
+        t_left = max(0.0, 1.0 - x / (LARGEUR * 0.18))
+        t_right = max(0.0, 1.0 - (LARGEUR - 1 - x) / (LARGEUR * 0.18))
+        attenuation = max(t_left, t_right) * 0.55  # 0 au centre, 0.55 aux bords
+        for y in range(ZONE_IMAGE_H):
+            pv[x, y] = int(255 * (1.0 - attenuation))  # 255 = garde photo, < 255 = assombrit
+
+    # Combiner : d'abord fondu bas, ensuite vignette latérale — tout sur la photo directement
+    fond_noir = Image.new("RGB", (LARGEUR, ZONE_IMAGE_H), COULEUR_FOND)
+
+    # Étape 1 : appliquer le fondu bas (photo → noir en bas)
+    img_step1 = Image.composite(img, fond_noir, fondu)
+
+    # Étape 2 : appliquer la vignette latérale (assombrit les côtés)
+    img_final = Image.composite(img_step1, fond_noir, vignette)
+
+    story.paste(img_final, (0, 0))
+
+    # ── Pastille score dorée — centrée horizontalement ────────────────────────
+    PASTILLE_R  = 130                                # rayon
+    cx          = LARGEUR // 2                       # centre horizontal
+    cy          = ZONE_IMAGE_H - 20                  # à cheval sur la photo
+    bbox_pastille = [cx - PASTILLE_R, cy - PASTILLE_R, cx + PASTILLE_R, cy + PASTILLE_R]
+
+    # Halo très doux derrière la pastille
+    for offset in range(22, 0, -4):
+        alpha_halo = int(30 * (offset / 22))
+        draw.ellipse(
+            [cx - PASTILLE_R - offset, cy - PASTILLE_R - offset,
+             cx + PASTILLE_R + offset, cy + PASTILLE_R + offset],
+            fill=(185, 148, 95, alpha_halo),
+        )
+    # Disque doré
+    draw.ellipse(bbox_pastille, fill=COULEUR_ACCENT)
+
+    # Anneau intérieur fin
+    draw.ellipse(
+        [cx - PASTILLE_R + 8, cy - PASTILLE_R + 8,
+         cx + PASTILLE_R - 8, cy + PASTILLE_R - 8],
+        outline=(210, 175, 120),
+        width=2,
+    )
+
+    # Chiffre du score
+    score_propre = score.replace("/10", "").strip()
+    font_score_pastille = charger_police(108)
+    try:
+        bbox_s = font_score_pastille.getbbox(score_propre)
+        sw = bbox_s[2] - bbox_s[0]
+        sh = bbox_s[3] - bbox_s[1]
+        sy = bbox_s[1]  # offset vertical réel de la police
+    except Exception:
+        sw, sh, sy = 80, 100, 0
+    draw.text(
+        (cx - sw // 2, cy - PASTILLE_R // 2 - sh // 2),
+        score_propre,
+        fill=COULEUR_FOND,
+        font=font_score_pastille,
+    )
+
+    # "/10" — ancré juste sous le chiffre, centré
+    font_sub = charger_police(34)
+    try:
+        bbox_sub = font_sub.getbbox("/10")
+        sub_w = bbox_sub[2] - bbox_sub[0]
+    except Exception:
+        sub_w = 44
+    draw.text(
+        (cx - sub_w // 2, cy - PASTILLE_R // 2 + sh + 6),
+        "/10",
+        fill=(40, 38, 34),
+        font=font_sub,
+    )
+
+    # ── Zone texte ────────────────────────────────────────────────────────────
+    padding_x  = 90
+    y_curseur  = cy + PASTILLE_R + 58          # démarre sous la pastille
+
+    # Ligne décorative gauche
+    draw.rectangle(
+        [(padding_x, y_curseur), (padding_x + 48, y_curseur + 2)],
+        fill=COULEUR_ACCENT,
+    )
+    # Ligne décorative droite (symétrique)
+    draw.rectangle(
+        [(LARGEUR - padding_x - 48, y_curseur), (LARGEUR - padding_x, y_curseur + 2)],
+        fill=COULEUR_ACCENT,
+    )
+    y_curseur += 40
+
+    # Titre du style — centré, petites capitales simulées
+    font_titre = charger_police(52)
+    titre_affiche = titre[:38].upper() + ("…" if len(titre) > 38 else "")
+    try:
+        bbox_t   = font_titre.getbbox(titre_affiche)
+        titre_w  = bbox_t[2] - bbox_t[0]
+    except Exception:
+        titre_w  = 600
+    draw.text(
+        ((LARGEUR - titre_w) // 2, y_curseur),
+        titre_affiche,
+        fill=COULEUR_TEXTE,
+        font=font_titre,
+    )
+    y_curseur += 76
+
+    # Séparateur très fin centré
+    sep_w = 200
+    draw.rectangle(
+        [(LARGEUR // 2 - sep_w // 2, y_curseur),
+         (LARGEUR // 2 + sep_w // 2, y_curseur + 1)],
+        fill=COULEUR_DIVIDER,
+    )
+    y_curseur += 38
+
+    # ── Phrase-résumé IA (générée, 1 phrase entière et punchy) ───────────────
+    phrase_story = generer_phrase_story(analyse)
+
+    font_phrase = charger_police_light(42)
+    largeur_utile = LARGEUR - (padding_x * 2)
+    try:
+        largeur_x = font_phrase.getlength("x")
+    except AttributeError:
+        largeur_x = 23
+    chars_par_ligne = max(24, int(largeur_utile / largeur_x))
+
+    lignes = textwrap.wrap(phrase_story, width=chars_par_ligne)
+    lignes = lignes[:3]          # max 3 lignes — garanti propre visuellement
+
+    ligne_h = 60
+    for ligne in lignes:
+        try:
+            bbox_l  = font_phrase.getbbox(ligne)
+            ligne_w = bbox_l[2] - bbox_l[0]
+        except Exception:
+            ligne_w = largeur_utile
+        # Centrage horizontal de chaque ligne
+        x_ligne = (LARGEUR - ligne_w) // 2
+        draw.text((x_ligne, y_curseur), ligne, fill=COULEUR_TEXTE, font=font_phrase)
+        y_curseur += ligne_h
+
+    # ── Footer branding ───────────────────────────────────────────────────────
+    footer_y      = HAUTEUR - 90
+    # Trait de séparation footer
+    draw.rectangle(
+        [(LARGEUR // 2 - 120, footer_y - 22), (LARGEUR // 2 + 120, footer_y - 21)],
+        fill=COULEUR_DIVIDER,
+    )
+    font_footer   = charger_police(30)
+    footer_txt    = "✦  JUGE MON STYLE  ✦"
+    try:
+        bbox_f    = font_footer.getbbox(footer_txt)
+        footer_w  = bbox_f[2] - bbox_f[0]
+    except Exception:
+        footer_w  = 260
+    draw.text(
+        ((LARGEUR - footer_w) // 2, footer_y),
+        footer_txt,
+        fill=COULEUR_MUTED,
+        font=font_footer,
+    )
+
+    # ── Export JPEG ───────────────────────────────────────────────────────────
+    buffer = io.BytesIO()
+    story.save(buffer, format="JPEG", quality=92, optimize=True)
+    buffer.seek(0)
+    return buffer.read()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  SECTION 4 — PROMPTS IA (analyses enrichies : 5-6 phrases dans "Analyse experte")
 # ══════════════════════════════════════════════════════════════════════════════
 
 PROMPT_DRIP_TEMPLATE = """\
@@ -316,25 +736,22 @@ PROCESSUS D'ANALYSE — réfléchis dans une balise <reflexion> avant le verdict
 Règle d'or : tu analyses TOUJOURS la tenue avec ce que tu vois, même si la photo est imparfaite.
 → Ne renvoie "erreur" QUE si l'image est entièrement hors-sujet (pas de personne), \
 entièrement noire/illisible, ou si aucun vêtement n'est visible du tout.
-→ Dans tous les autres cas (photo un peu sombre, coupée sous les genoux, angle de 3/4, \
-selfie montrant le haut du corps) : note "ok" et intègre un avertissement bienveillant \
-d'une phrase dans le champ "description" si pertinent \
-(ex : "Je ne vois pas tes chaussures, mais voici mon analyse du haut —" \
-ou "Pour un conseil complet, essaie une photo tête aux pieds la prochaine fois !").
+→ Dans tous les autres cas : note "ok" et intègre un avertissement bienveillant \
+d'une phrase dans le champ "description" si pertinent.
 
 ÉTAPE 2 — GENRE DE PRÉSENTATION :
-"masculin", "feminin" ou "neutre" selon les codes vestimentaires visibles — \
-uniquement pour adapter les pronoms, pas un jugement.
+"masculin", "feminin" ou "neutre" selon les codes vestimentaires visibles.
 
 ÉTAPE 3 — INVENTAIRE PRÉCIS :
 Chaque pièce visible : type exact, couleur précise ("bleu ardoise" pas "bleu"), \
-matière apparente (coton, denim, jersey, cuir...), coupe.
+matière apparente, coupe.
 
-ÉTAPE 4 — ANALYSE EXPERTE :
+ÉTAPE 4 — ANALYSE EXPERTE APPROFONDIE :
   · COLORIMÉTRIE : harmonie analogique/complémentaire ? Contraste tonal ? Rappels de couleur ?
-  · MORPHOLOGIE : les volumes sont-ils équilibrés (règle haut volumineux → bas ajusté) ?
+  · MORPHOLOGIE : volumes équilibrés (règle haut volumineux → bas ajusté) ?
   · RÈGLE DU 3e PIÈCE : y a-t-il un élément qui élève la tenue ?
   · ADÉQUATION CONTEXTE & INTENTION : la tenue remplit-elle son rôle ?
+  · POINTS FORTS & POINTS FAIBLES : que fonctionne exactement, et que pourrait-on améliorer ?
 
 ÉTAPE 5 — ACCESSOIRE CATALOGUE : lequel apporte la valeur ajoutée la plus immédiate ?
 
@@ -351,15 +768,21 @@ erreur:[raison courte] | neutre | [Message doux expliquant comment retenter — 
 
 Sinon (= quasi toujours) → exactement 8 champs séparés par | :
 ok | [masculin/feminin/neutre] | [Description 3-4 phrases : chaque pièce visible, \
-couleur exacte, matière, coupe, articulation. Inclure ici tout avertissement photo si besoin.] | \
+couleur exacte, matière, coupe. Inclure ici tout avertissement photo si besoin.] | \
 [Note]/10 | [Nom du style 3-4 mots] | \
-[Analyse experte 2-3 phrases — règles appliquées, contexte + intention évalués, pronoms adaptés] | \
+[Analyse experte DÉTAILLÉE — IMPÉRATIF : environ 4 phrases riches qui s'appuient sur \
+ton raisonnement dans <reflexion>. Explique PRÉCISÉMENT pourquoi la coupe fonctionne \
+ou non (morphologie, équilibre des volumes), pourquoi les couleurs s'accordent \
+(colorimétrie, contraste tonal, rappels de couleur), nomme la règle de style appliquée \
+(règle du 3e pièce, 60-30-10, etc.), évalue l'adéquation avec le contexte et l'intention, \
+et conclus avec le point le plus fort de la tenue. Pronoms adaptés au genre.] | \
 [Conseil concret — explique le POURQUOI avec une règle précise] | \
 [ID accessoire parmi {catalog_keys} ou "none"]
 
 RÈGLES ABSOLUES :
 - Champ 8 : uniquement parmi {catalog_keys} ou "none". Jamais d'ID inventé.
 - Ton : chaleureux, expert, jamais condescendant.
+- L'analyse (champ 6) doit faire environ 4 phrases. C'est le cœur de la valeur ajoutée.
 - Ne rien écrire hors format après </reflexion>.
 """
 
@@ -381,10 +804,7 @@ CATALOGUE D'ACCESSOIRES :
 PROCESSUS D'ANALYSE — réfléchis dans une balise <reflexion>.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-ÉTAPE 1 — ÉVALUATION DES PHOTOS :
-Même règle que pour l'analyse simple : tu analyses avec ce que tu vois. \
-Ne renvoie "erreur" que si les images sont entièrement illisibles ou ne montrent aucun vêtement.
-
+ÉTAPE 1 — ÉVALUATION DES PHOTOS (même règle : analyse ce que tu vois).
 ÉTAPE 2 — GENRE de présentation global (pour adapter les pronoms).
 ÉTAPE 3 — ANALYSE TENUE A : inventaire, colorimétrie, morphologie, adéquation contexte.
 ÉTAPE 4 — ANALYSE TENUE B : idem.
@@ -404,12 +824,17 @@ Sinon → exactement 9 champs séparés par | :
 ok | [masculin/feminin/neutre] | [Description tenue A — pièces, couleurs, matières] | \
 [Description tenue B — pièces, couleurs, matières] | [A ou B — la gagnante] | \
 [Score tenue A]/10 | [Score tenue B]/10 | \
-[Analyse comparative 3-4 phrases : points forts de chaque tenue, règle décisive, \
-conseil d'amélioration pour la perdante, adéquation contexte + intention] | \
+[Analyse comparative DÉTAILLÉE — IMPÉRATIF : environ 5 phrases riches qui s'appuient sur \
+ton raisonnement dans <reflexion>. Explique les points forts de chaque tenue, \
+nomme la règle de style décisive (ex: contraste tonal, adéquation morphologique, \
+règle du 3e pièce), justifie précisément pourquoi la gagnante l'emporte pour CE contexte, \
+donne un conseil d'amélioration concret pour la perdante, et évalue l'adéquation \
+contexte + intention. Pronoms adaptés.] | \
 [ID accessoire parmi {catalog_keys} ou "none"]
 
 RÈGLES ABSOLUES :
 - Champ 9 : uniquement parmi {catalog_keys} ou "none".
+- L'analyse comparative (champ 8) doit faire 5 phrases environ.
 - Ne rien écrire hors format après </reflexion>.
 """
 
@@ -424,15 +849,14 @@ CONTEXTE : Cette tenue est portée pour {situation}.
 {intention_block}\
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PROCESSUS — réfléchis dans une balise <reflexion>.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ÉTAPE 1 — ÉVALUATION DE LA PHOTO :
 Tu analyses toujours avec ce que tu vois. \
-Ne renvoie "erreur" que si l'image est entièrement noire/illisible ou ne montre aucun vêtement. \
-Si la photo est imparfaite, intègre-le dans le roast avec humour \
-(ex : "Je ne vois pas tes chaussures, ce qui est peut-être une bénédiction pour tout le monde.").
+Ne renvoie "erreur" que si l'image est entièrement noire/illisible. \
+Si la photo est imparfaite, intègre-le dans le roast avec humour.
 
 ÉTAPE 2 — GENRE de présentation (pronoms à adapter).
 ÉTAPE 3 — INVENTAIRE DES CRIMES : chaque pièce visible et son problème principal.
@@ -467,10 +891,18 @@ RÈGLES ABSOLUES :
 
 if "a_paye" not in st.session_state:
     st.session_state.a_paye = False
+if "saved_image" not in st.session_state:
+    st.session_state.saved_image = None          # bytes de l'image sauvegardée
+if "auto_roast" not in st.session_state:
+    st.session_state.auto_roast = False          # déclencher l'analyse auto au retour
+
+# Initialisation du rate limiter
+init_rate_limit()
 
 payment_param = st.query_params.get("payment", "")
 if payment_param == "success" and not st.session_state.a_paye:
     st.session_state.a_paye = True
+    st.session_state.auto_roast = True           # déclenche le roast automatique
     st.query_params.clear()
     st.rerun()
 
@@ -757,6 +1189,30 @@ div.stButton > button:first-child:focus {
     transform: translateY(0) !important;
     box-shadow: 0 1px 6px rgba(44, 44, 40, 0.15) !important;
     outline: none !important;
+}
+
+/* ── Download button (Story) ─────────────────────────────────────── */
+div.stDownloadButton > button {
+    background-color: var(--accent-warm) !important;
+    background-image: none !important;
+    color: #FFFFFF !important;
+    border: none !important;
+    border-radius: 50px !important;
+    padding: 0.75rem 2rem !important;
+    font-size: 0.88rem !important;
+    font-family: 'Inter', sans-serif !important;
+    font-weight: 600 !important;
+    width: 100% !important;
+    margin-top: 0.4rem !important;
+    -webkit-text-fill-color: #FFFFFF !important;
+    box-shadow: 0 2px 10px rgba(139, 111, 71, 0.25) !important;
+    transition: background-color 0.2s ease, transform 0.2s ease !important;
+}
+div.stDownloadButton > button:hover {
+    background-color: #7A5E38 !important;
+    transform: translateY(-1px) !important;
+    color: #FFFFFF !important;
+    -webkit-text-fill-color: #FFFFFF !important;
 }
 
 /* ── Spinner ─────────────────────────────────────────────────────── */
@@ -1201,6 +1657,10 @@ with col_a:
         key="upload_a",
         label_visibility="visible",
     )
+    # Sauvegarde de l'image avant redirection Stripe
+    if uploaded_a is not None:
+        st.session_state.saved_image = uploaded_a.read()
+        uploaded_a.seek(0)  # rembobine pour que Image.open() fonctionne ensuite
 with col_b:
     uploaded_b = st.file_uploader(
         "Tenue B  *(optionnel — mode Dilemme)*",
@@ -1208,6 +1668,10 @@ with col_b:
         key="upload_b",
         label_visibility="visible",
     )
+
+# Récupération de l'image sauvegardée si le file_uploader est vide au retour de Stripe
+if uploaded_a is None and st.session_state.saved_image is not None:
+    uploaded_a = io.BytesIO(st.session_state.saved_image)
 
 has_a = uploaded_a is not None
 has_b = uploaded_b is not None
@@ -1273,19 +1737,37 @@ if has_a:
     else:
         st.image(image_a, caption="Votre tenue", use_container_width=True)
 
-    # Info mode
+    # Info mode Dilemme
     if is_dilemme:
         st.info("**Mode Dilemme activé** — Deux tenues détectées. L'IA va comparer et choisir pour vous.", icon="⚡")
+
+    # ── Affichage du compteur d'analyses restantes (mode gratuit uniquement) ──
+    if not is_roast:
+        restantes = analyses_restantes()
+        if restantes > 0:
+            st.caption(f"✦ {restantes} analyse(s) gratuite(s) restante(s) aujourd'hui")
+        else:
+            st.warning(
+                "🌙 Vous avez utilisé vos 3 analyses gratuites du jour. "
+                "Revenez demain pour de nouvelles analyses — ou passez au **Mode Roast** pour une analyse pimentées !",
+                icon="⏳",
+            )
 
     # CTA
     lancer_analyse = False
     if not is_roast:
-        label_btn = "Comparer les deux tenues" if is_dilemme else "Analyser ma tenue"
-        if st.button(f"✦  {label_btn.upper()}"):
-            lancer_analyse = True
+        # On n'affiche le bouton que si la limite n'est pas atteinte
+        if peut_analyser():
+            label_btn = "Comparer les deux tenues" if is_dilemme else "Analyser ma tenue"
+            if st.button(f"✦  {label_btn.upper()}"):
+                lancer_analyse = True
     else:
         if st.session_state.a_paye:
-            if st.button("⚡  LANCER LE ROAST"):
+            # Déclenchement automatique après retour de Stripe si photo disponible
+            if st.session_state.auto_roast and has_a:
+                st.session_state.auto_roast = False
+                lancer_analyse = True
+            elif st.button("⚡  LANCER LE ROAST"):
                 lancer_analyse = True
         else:
             st.markdown(f"""
@@ -1312,7 +1794,7 @@ if has_a:
 
         with st.spinner(spinner_msg):
 
-            # 1. Compression HD (1024px / q85 / detail=high)
+            # 1. Compression de l'image
             images_b64 = [compress_image_to_base64(image_a)]
             if is_dilemme:
                 images_b64.append(compress_image_to_base64(image_b))
@@ -1322,31 +1804,38 @@ if has_a:
             prompt = construire_prompt(prompt_mode, situation_desc, intention)
 
             try:
-                # 3. Appel OpenAI Vision HD
+                # 3. Appel OpenAI Vision
                 reponse_brute = appeler_openai(prompt, images_b64)
 
                 # 4. Extraction CoT + parsing
                 reflexion_text, reponse_propre = extraire_reflexion(reponse_brute)
                 r = parser_reponse(reponse_propre)
 
-                # 5. Consommation crédit Roast
-                if is_roast and st.session_state.a_paye:
-                    st.session_state.a_paye = False
+                # 5. Consommation crédit et compteur — déplacés après le check visibilité
+                # (voir dans chaque branche d'affichage ci-dessous)
 
                 # ── GESTION ERREUR VISIBILITÉ ──────────────────────────────
                 if r["visibilite"].startswith("erreur"):
                     message_ia = r.get("description") or r["visibilite"].replace("erreur:", "").strip()
                     titre_err = "Photo insuffisante" if not is_roast else "Photo irrecevable"
-                    st.markdown(f"""
-<div class="visibility-error">
-    <div class="ve-icon">{"📷" if not is_roast else "🔍"}</div>
-    <div class="ve-title">{titre_err}</div>
-    <div class="ve-body">{message_ia}</div>
-</div>
-""", unsafe_allow_html=True)
+                    icone_err = "📷" if not is_roast else "🔍"
+                    st.markdown(
+                        f'<div class="visibility-error">'
+                        f'<div class="ve-icon">{icone_err}</div>'
+                        f'<div class="ve-title">{titre_err}</div>'
+                        f'<div class="ve-body">{message_ia}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
 
                 # ── MODE DILEMME ───────────────────────────────────────────
                 elif r.get("mode") == "dilemme":
+
+                    # Consommation crédit (uniquement si succès)
+                    if is_roast and st.session_state.a_paye:
+                        st.session_state.a_paye = False
+                    if not is_roast:
+                        incrementer_compteur()
 
                     # Badge occasion
                     st.markdown(
@@ -1355,41 +1844,59 @@ if has_a:
                         unsafe_allow_html=True,
                     )
 
-                    # Scores A vs B
+                    # ── FIX BUG : scores A vs B construits sans f-strings imbriquées ──
+                    # On calcule d'abord toutes les valeurs conditionnelles AVANT la f-string
                     gagnante = r.get("gagnante", "A").upper()
-                    st.markdown(f"""
-<div class="dilemme-scores">
-    <div class="dilemme-score-cell {"winner" if gagnante == "A" else ""}">
-        <div class="dilemme-score-label">Tenue A {"✓ Gagnante" if gagnante == "A" else ""}</div>
-        <div class="dilemme-score-value">{r.get("score_a","?")}</div>
-        {"<div class='winner-badge'>Recommandée</div>" if gagnante == "A" else ""}
-    </div>
-    <div class="dilemme-score-cell {"winner" if gagnante == "B" else ""}">
-        <div class="dilemme-score-label">Tenue B {"✓ Gagnante" if gagnante == "B" else ""}</div>
-        <div class="dilemme-score-value">{r.get("score_b","?")}</div>
-        {"<div class='winner-badge'>Recommandée</div>" if gagnante == "B" else ""}
-    </div>
-</div>
-""", unsafe_allow_html=True)
+
+                    # Tenue A
+                    cell_a_class = "dilemme-score-cell winner" if gagnante == "A" else "dilemme-score-cell"
+                    label_a = "Tenue A ✓ Gagnante" if gagnante == "A" else "Tenue A"
+                    badge_a = '<div class="winner-badge">Recommandée</div>' if gagnante == "A" else ""
+
+                    # Tenue B
+                    cell_b_class = "dilemme-score-cell winner" if gagnante == "B" else "dilemme-score-cell"
+                    label_b = "Tenue B ✓ Gagnante" if gagnante == "B" else "Tenue B"
+                    badge_b = '<div class="winner-badge">Recommandée</div>' if gagnante == "B" else ""
+
+                    score_a = r.get("score_a", "?")
+                    score_b = r.get("score_b", "?")
+
+                    # Construction HTML propre sans guillemets imbriqués
+                    html_scores = (
+                        '<div class="dilemme-scores">'
+                        f'<div class="{cell_a_class}">'
+                        f'<div class="dilemme-score-label">{label_a}</div>'
+                        f'<div class="dilemme-score-value">{score_a}</div>'
+                        f'{badge_a}'
+                        '</div>'
+                        f'<div class="{cell_b_class}">'
+                        f'<div class="dilemme-score-label">{label_b}</div>'
+                        f'<div class="dilemme-score-value">{score_b}</div>'
+                        f'{badge_b}'
+                        '</div>'
+                        '</div>'
+                    )
+                    st.markdown(html_scores, unsafe_allow_html=True)
 
                     # Descriptions A et B
                     if r.get("desc_a"):
                         label_genre = r.get("genre", "neutre")
+                        symbole_genre = "♂" if label_genre == "masculin" else ("♀" if label_genre == "feminin" else "◈")
                         badge_html = (
                             f'<span class="genre-badge genre-{label_genre}">'
-                            f'{"♂" if label_genre == "masculin" else "♀" if label_genre == "feminin" else "◈"}'
-                            f" style {label_genre}</span>"
+                            f'{symbole_genre} style {label_genre}</span>'
                         )
-                        st.markdown(f"""
-<div class="desc-card">
-    <div class="desc-card-header">Tenue A — détail{badge_html}</div>
-    <div class="desc-card-body">{r["desc_a"]}</div>
-</div>
-<div class="desc-card" style="margin-top:0.5rem">
-    <div class="desc-card-header">Tenue B — détail</div>
-    <div class="desc-card-body">{r["desc_b"]}</div>
-</div>
-""", unsafe_allow_html=True)
+                        st.markdown(
+                            f'<div class="desc-card">'
+                            f'<div class="desc-card-header">Tenue A — détail{badge_html}</div>'
+                            f'<div class="desc-card-body">{r["desc_a"]}</div>'
+                            f'</div>'
+                            f'<div class="desc-card" style="margin-top:0.5rem">'
+                            f'<div class="desc-card-header">Tenue B — détail</div>'
+                            f'<div class="desc-card-body">{r["desc_b"]}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
 
                     # Analyse comparative
                     st.success(f"**Analyse comparative**\n\n{r['analyse']}")
@@ -1397,20 +1904,41 @@ if has_a:
                     # Card affiliation
                     if r.get("accessoire") and r["accessoire"] in AFFILIATE_CATALOG:
                         prod = AFFILIATE_CATALOG[r["accessoire"]]
-                        st.markdown(f"""
-<a href="{prod['affiliate_url']}" target="_blank" rel="noopener noreferrer sponsored" class="affil-card">
-    <div class="affil-emoji">{prod['emoji']}</div>
-    <div class="affil-body">
-        <div class="affil-header">Notre sélection</div>
-        <div class="affil-name">{prod['name']}</div>
-        <div class="affil-tagline">{prod['tagline']}</div>
-    </div>
-    <div class="affil-cta">Voir →</div>
-</a>
-""", unsafe_allow_html=True)
+                        affil_html = (
+                            '<div style="margin-top:1rem;">'
+                            f'<a href="{prod["affiliate_url"]}" target="_blank" rel="noopener noreferrer sponsored" class="affil-card">'
+                            f'<div class="affil-emoji">{prod["emoji"]}</div>'
+                            '<div class="affil-body">'
+                            '<div class="affil-header">Notre sélection</div>'
+                            f'<div class="affil-name">{prod["name"]}</div>'
+                            f'<div class="affil-tagline">{prod["tagline"]}</div>'
+                            '</div>'
+                            '<div class="affil-cta">Voir →</div>'
+                            '</a>'
+                            '</div>'
+                        )
+                        st.markdown(affil_html, unsafe_allow_html=True)
+
+                    # ── Bouton Story (mode Dilemme) ────────────────────────
+                    # Pour le dilemme, on génère la story avec la tenue gagnante
+                    image_story = image_a if gagnante == "A" else (image_b or image_a)
+                    score_story = score_a if gagnante == "A" else score_b
+                    titre_story = f"Tenue {gagnante} recommandée"
+                    story_bytes = generer_story(image_story, score_story, titre_story, r["analyse"])
+                    st.download_button(
+                        label="📲 Télécharger ma Story Instagram / TikTok",
+                        data=story_bytes,
+                        file_name="juge_mon_style_story.jpg",
+                        mime="image/jpeg",
+                        key="dl_story_dilemme",
+                    )
 
                 # ── MODE DRIP (analyse classique) ──────────────────────────
                 elif r.get("mode") in ("drip", None) and not is_roast:
+
+                    # Consommation crédit (uniquement si succès)
+                    if not is_roast:
+                        incrementer_compteur()
 
                     # Badge occasion
                     st.markdown(
@@ -1422,25 +1950,27 @@ if has_a:
                     # Card description
                     if r.get("description"):
                         label_genre = r.get("genre", "neutre")
+                        symbole_genre = "♂" if label_genre == "masculin" else ("♀" if label_genre == "feminin" else "◈")
                         badge_html = (
                             f'<span class="genre-badge genre-{label_genre}">'
-                            f'{"♂" if label_genre == "masculin" else "♀" if label_genre == "feminin" else "◈"}'
-                            f" style {label_genre}</span>"
+                            f'{symbole_genre} style {label_genre}</span>'
                         )
-                        st.markdown(f"""
-<div class="desc-card">
-    <div class="desc-card-header">Ce que l'IA voit{badge_html}</div>
-    <div class="desc-card-body">{r["description"]}</div>
-</div>
-""", unsafe_allow_html=True)
+                        st.markdown(
+                            f'<div class="desc-card">'
+                            f'<div class="desc-card-header">Ce que l\'IA voit{badge_html}</div>'
+                            f'<div class="desc-card-body">{r["description"]}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
 
                     # Score
-                    st.markdown(f"""
-<div class="score-block">
-    <div class="score-number">{r["score"]}</div>
-    <div class="score-label">Score de style</div>
-</div>
-""", unsafe_allow_html=True)
+                    st.markdown(
+                        f'<div class="score-block">'
+                        f'<div class="score-number">{r["score"]}</div>'
+                        f'<div class="score-label">Score de style</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
 
                     # Verdict
                     corps = f"**{r['titre']}**\n\n{r['analyse']}"
@@ -1451,20 +1981,42 @@ if has_a:
                     # Card affiliation
                     if r.get("accessoire") and r["accessoire"] in AFFILIATE_CATALOG:
                         prod = AFFILIATE_CATALOG[r["accessoire"]]
-                        st.markdown(f"""
-<a href="{prod['affiliate_url']}" target="_blank" rel="noopener noreferrer sponsored" class="affil-card">
-    <div class="affil-emoji">{prod['emoji']}</div>
-    <div class="affil-body">
-        <div class="affil-header">Notre sélection</div>
-        <div class="affil-name">{prod['name']}</div>
-        <div class="affil-tagline">{prod['tagline']}</div>
-    </div>
-    <div class="affil-cta">Voir →</div>
-</a>
-""", unsafe_allow_html=True)
+                        affil_html = (
+                            '<div style="margin-top:1rem;">'
+                            f'<a href="{prod["affiliate_url"]}" target="_blank" rel="noopener noreferrer sponsored" class="affil-card">'
+                            f'<div class="affil-emoji">{prod["emoji"]}</div>'
+                            '<div class="affil-body">'
+                            '<div class="affil-header">Notre sélection</div>'
+                            f'<div class="affil-name">{prod["name"]}</div>'
+                            f'<div class="affil-tagline">{prod["tagline"]}</div>'
+                            '</div>'
+                            '<div class="affil-cta">Voir →</div>'
+                            '</a>'
+                            '</div>'
+                        )
+                        st.markdown(affil_html, unsafe_allow_html=True)
+
+                    # ── Bouton Story (mode Drip) ───────────────────────────
+                    story_bytes = generer_story(
+                        image_a,
+                        r.get("score", "?"),
+                        r.get("titre", "Mon Style"),
+                        r.get("analyse", ""),
+                    )
+                    st.download_button(
+                        label="📲 Télécharger ma Story Instagram / TikTok",
+                        data=story_bytes,
+                        file_name="juge_mon_style_story.jpg",
+                        mime="image/jpeg",
+                        key="dl_story_drip",
+                    )
 
                 # ── MODE ROAST ─────────────────────────────────────────────
                 else:
+
+                    # Consommation crédit Roast (uniquement si succès)
+                    if is_roast and st.session_state.a_paye:
+                        st.session_state.a_paye = False
 
                     # Badge occasion
                     st.markdown(
@@ -1476,31 +2028,35 @@ if has_a:
                     # Description (ton sarcastique)
                     if r.get("description"):
                         label_genre = r.get("genre", "neutre")
+                        symbole_genre = "♂" if label_genre == "masculin" else ("♀" if label_genre == "feminin" else "◈")
                         badge_html = (
                             f'<span class="genre-badge genre-{label_genre}">'
-                            f'{"♂" if label_genre == "masculin" else "♀" if label_genre == "feminin" else "◈"}'
-                            f" style {label_genre}</span>"
+                            f'{symbole_genre} style {label_genre}</span>'
                         )
-                        st.markdown(f"""
-<div class="desc-card">
-    <div class="desc-card-header">Ce que l'IA voit{badge_html}</div>
-    <div class="desc-card-body">{r["description"]}</div>
-</div>
-""", unsafe_allow_html=True)
+                        st.markdown(
+                            f'<div class="desc-card">'
+                            f'<div class="desc-card-header">Ce que l\'IA voit{badge_html}</div>'
+                            f'<div class="desc-card-body">{r["description"]}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
 
                     # Score
-                    st.markdown(f"""
-<div class="score-block">
-    <div class="score-number">{r["score"]}</div>
-    <div class="score-label">Score de style</div>
-</div>
-""", unsafe_allow_html=True)
+                    st.markdown(
+                        f'<div class="score-block">'
+                        f'<div class="score-number">{r["score"]}</div>'
+                        f'<div class="score-label">Score de style</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
 
                     # Roast
                     corps = f"**{r['titre']}**\n\n{r['analyse']}"
                     if r.get("conseil"):
                         corps += f"\n\n*{r['conseil']}*"
                     st.error(corps)
+
+                    # Pas de Story pour le mode Roast (le contenu est payant)
 
                 # ── CoT expander (tous modes) ──────────────────────────────
                 if reflexion_text:
