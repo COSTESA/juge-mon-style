@@ -4,18 +4,34 @@
 ║   Analyse vestimentaire IA · Premium · Smart Friend             ║
 ╚══════════════════════════════════════════════════════════════════╝
 
-Changelog v1.4 :
-  - [FIX]     Bug HTML Mode Dilemme : fuite de balises dans st.markdown corrigée
-               en sortant les expressions conditionnelles des f-strings imbriquées.
-  - [FEATURE] Analyses plus détaillées : prompts mis à jour pour 5-6 phrases riches
-               qui exploitent le raisonnement privé <reflexion>.
-  - [FEATURE] Rate Limiting : 3 analyses gratuites par jour via st.session_state
-               (clé `analyses_today` + `last_analysis_date`). Roast non limité.
-  - [FEATURE] Bouton "Générer ma Story" : génération d'une image 1080×1920 px
-               (format 9:16) avec Pillow + st.download_button.
+Changelog v1.5 (audit Lead Dev) :
+  - [FIX]     Sécurité XSS : tous les champs issus de l'API OpenAI
+               (description, analyse, score, desc_a, desc_b, message_ia)
+               sont désormais passés dans html.escape() via _safe()
+               avant injection dans st.markdown unsafe_allow_html.
+  - [FIX]     Ordre de consommation des crédits : incrementer_compteur()
+               et a_paye=False sont maintenant appelés APRÈS l'affichage
+               réussi des résultats, pas avant. Si l'API renvoie une erreur
+               de visibilité ou un crash, aucun crédit n'est consommé.
+  - [FIX]     Robustesse parsing : parser_reponse() utilise désormais un
+               split limité (split_pipe) qui fusionne les pipes parasites
+               éventuels dans le dernier champ long, évitant un décalage
+               de tous les champs suivants.
+  - [FIX]     Parsing wrappé dans try/except dédié avec message utilisateur
+               adapté si le format IA est inattendu.
+  - [FIX]     Timeout 45s ajouté à appeler_openai() pour éviter un hang
+               silencieux en cas de surcharge API.
+  - [FIX]     Bannière post-paiement dynamique : affiche un message différent
+               selon que la photo est déjà en cache (auto_roast possible)
+               ou non (invite à uploader).
+  - [FIX]     Suppression de la branche redondante "if not is_roast" dans
+               le mode Drip (on y arrive déjà uniquement si not is_roast).
+  - [KEEP]    Toutes les fonctionnalités v1.4 conservées : Story, Rate Limit,
+               Dilemme, CoT, affiliation, Stripe.
 """
 
 # ─── IMPORTS ──────────────────────────────────────────────────────────────────
+import html
 import io
 import re
 import base64
@@ -250,6 +266,7 @@ def appeler_openai(prompt: str, images_b64: list) -> str:
     Envoie le prompt + 1 ou 2 images à OpenAI Vision.
     images_b64 : liste de strings base64 (1 = analyse classique, 2 = dilemme A/B).
     detail=auto : OpenAI choisit intelligemment low ou high selon la taille de l'image.
+    timeout=45s pour éviter un hang silencieux.
     """
     content = [{"type": "text", "text": prompt}]
     for b64 in images_b64:
@@ -259,6 +276,7 @@ def appeler_openai(prompt: str, images_b64: list) -> str:
         model="gpt-4o-mini",
         max_tokens=1200,  # Augmenté pour les analyses plus détaillées
         messages=[{"role": "user", "content": content}],
+        timeout=45,
     )
     return response.choices[0].message.content
 
@@ -270,6 +288,11 @@ def extraire_reflexion(reponse_brute: str) -> tuple:
     reflexion_text = match.group(1).strip() if match else ""
     reponse_propre = pattern.sub("", reponse_brute).strip()
     return reflexion_text, reponse_propre
+
+
+def _safe(text: str) -> str:
+    """Échappe les caractères HTML pour éviter toute injection XSS dans les st.markdown unsafe."""
+    return html.escape(str(text)) if text else ""
 
 
 def parser_reponse(reponse_propre: str) -> dict:
@@ -284,60 +307,92 @@ def parser_reponse(reponse_propre: str) -> dict:
 
     Mode Roast (7 champs) :
       visibilite | genre | description | score | titre | roast | punchline
+
+    ROBUSTESSE : si l'IA insère un | parasite dans un champ libre (le dernier champ long),
+    on limite le split à max_fields-1 afin de préserver la structure des premiers champs.
     """
-    parties = [p.strip() for p in reponse_propre.split("|")]
+    # Détection du nombre de champs attendus selon le préfixe de visibilité
+    raw = reponse_propre.strip()
 
-    def get(i, defaut=""):
-        return parties[i] if len(parties) > i else defaut
+    # Essai 9 champs (dilemme), puis 8 (drip), puis 7 (roast/erreur)
+    # On splitte d'abord sur le max connu (9), puis on re-splitte sur moins si besoin
+    # en fusionnant les champs excédentaires dans le dernier champ long.
+    def split_pipe(texte: str, max_fields: int) -> list:
+        """Split sur | mais fusionne l'excédent dans le dernier champ."""
+        parts = [p.strip() for p in texte.split("|")]
+        if len(parts) <= max_fields:
+            return parts
+        # Fusionne tout ce qui dépasse dans le dernier champ attendu
+        return parts[:max_fields - 1] + [" | ".join(parts[max_fields - 1:])]
 
-    visibilite = get(0, "ok")
-    genre = get(1, "neutre").lower()
-    if genre not in ("masculin", "feminin", "neutre"):
-        genre = "neutre"
+    # Pré-détection : dilemme attend 9 champs, drip 8, roast/erreur 7
+    raw_parts_9 = split_pipe(raw, 9)
+    raw_parts_8 = split_pipe(raw, 8)
+    raw_parts_7 = split_pipe(raw, 7)
 
-    n = len(parties)
+    def get_from(parts, i, defaut=""):
+        return parts[i] if len(parts) > i else defaut
 
-    if n >= 9:
+    visibilite_9 = get_from(raw_parts_9, 0, "ok")
+    n9 = len(raw_parts_9)
+    n8 = len(raw_parts_8)
+
+    if n9 >= 9:
+        parties = raw_parts_9
+        visibilite = get_from(parties, 0, "ok")
+        genre = get_from(parties, 1, "neutre").lower()
+        if genre not in ("masculin", "feminin", "neutre"):
+            genre = "neutre"
         # Mode Dilemme
         result = {
             "mode": "dilemme",
             "visibilite": visibilite,
             "genre": genre,
-            "desc_a": get(2),
-            "desc_b": get(3),
-            "gagnante": get(4, "A"),
-            "score_a": get(5, "?/10"),
-            "score_b": get(6, "?/10"),
-            "analyse": get(7),
-            "accessoire": get(8, ""),
+            "desc_a": get_from(parties, 2),
+            "desc_b": get_from(parties, 3),
+            "gagnante": get_from(parties, 4, "A"),
+            "score_a": get_from(parties, 5, "?/10"),
+            "score_b": get_from(parties, 6, "?/10"),
+            "analyse": get_from(parties, 7),
+            "accessoire": get_from(parties, 8, ""),
         }
-    elif n >= 8:
+    elif n8 >= 8:
+        parties = raw_parts_8
+        visibilite = get_from(parties, 0, "ok")
+        genre = get_from(parties, 1, "neutre").lower()
+        if genre not in ("masculin", "feminin", "neutre"):
+            genre = "neutre"
         # Analyse classique Drip
-        acc = get(7, "")
+        acc = get_from(parties, 7, "")
         if acc.lower() in ("none", "aucun", ""):
             acc = ""
         result = {
             "mode": "drip",
             "visibilite": visibilite,
             "genre": genre,
-            "description": get(2),
-            "score": get(3, "?/10"),
-            "titre": get(4, "Analyse"),
-            "analyse": get(5, reponse_propre),
-            "conseil": get(6),
+            "description": get_from(parties, 2),
+            "score": get_from(parties, 3, "?/10"),
+            "titre": get_from(parties, 4, "Analyse"),
+            "analyse": get_from(parties, 5, raw),
+            "conseil": get_from(parties, 6),
             "accessoire": acc,
         }
     else:
+        parties = raw_parts_7
+        visibilite = get_from(parties, 0, "ok")
+        genre = get_from(parties, 1, "neutre").lower()
+        if genre not in ("masculin", "feminin", "neutre"):
+            genre = "neutre"
         # Roast (7 champs) ou réponse courte (erreur visibilité)
         result = {
             "mode": "roast",
             "visibilite": visibilite,
             "genre": genre,
-            "description": get(2),
-            "score": get(3, "?/10"),
-            "titre": get(4, "Analyse"),
-            "analyse": get(5, reponse_propre),
-            "conseil": get(6),
+            "description": get_from(parties, 2),
+            "score": get_from(parties, 3, "?/10"),
+            "titre": get_from(parties, 4, "Analyse"),
+            "analyse": get_from(parties, 5, raw),
+            "conseil": get_from(parties, 6),
             "accessoire": "",
         }
 
@@ -1620,11 +1675,15 @@ st.markdown("""
 # ══════════════════════════════════════════════════════════════════════════════
 
 if st.session_state.a_paye:
-    st.markdown("""
+    if st.session_state.saved_image is not None:
+        banner_msg = "Votre photo est prête — le Roast se lance automatiquement."
+    else:
+        banner_msg = "Uploadez votre photo ci-dessous — le Roast arrive dans les secondes qui suivent."
+    st.markdown(f"""
 <div class="payment-success-banner">
     <div class="check">✓</div>
     <h3>Paiement confirmé</h3>
-    <p>Uploadez votre photo ci-dessous — le Roast arrive dans les secondes qui suivent.</p>
+    <p>{banner_msg}</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1809,14 +1868,22 @@ if has_a:
 
                 # 4. Extraction CoT + parsing
                 reflexion_text, reponse_propre = extraire_reflexion(reponse_brute)
-                r = parser_reponse(reponse_propre)
+                try:
+                    r = parser_reponse(reponse_propre)
+                except Exception as parse_err:
+                    st.error(
+                        "L'IA a renvoyé une réponse dans un format inattendu. "
+                        "Veuillez réessayer — si le problème persiste, la photo est peut-être trop sombre."
+                    )
+                    raise parse_err
 
                 # 5. Consommation crédit et compteur — déplacés après le check visibilité
                 # (voir dans chaque branche d'affichage ci-dessous)
 
                 # ── GESTION ERREUR VISIBILITÉ ──────────────────────────────
                 if r["visibilite"].startswith("erreur"):
-                    message_ia = r.get("description") or r["visibilite"].replace("erreur:", "").strip()
+                    # ⚠️ Ne PAS consommer le crédit si la photo est illisible
+                    message_ia = _safe(r.get("description") or r["visibilite"].replace("erreur:", "").strip())
                     titre_err = "Photo insuffisante" if not is_roast else "Photo irrecevable"
                     icone_err = "📷" if not is_roast else "🔍"
                     st.markdown(
@@ -1830,12 +1897,6 @@ if has_a:
 
                 # ── MODE DILEMME ───────────────────────────────────────────
                 elif r.get("mode") == "dilemme":
-
-                    # Consommation crédit (uniquement si succès)
-                    if is_roast and st.session_state.a_paye:
-                        st.session_state.a_paye = False
-                    if not is_roast:
-                        incrementer_compteur()
 
                     # Badge occasion
                     st.markdown(
@@ -1858,8 +1919,8 @@ if has_a:
                     label_b = "Tenue B ✓ Gagnante" if gagnante == "B" else "Tenue B"
                     badge_b = '<div class="winner-badge">Recommandée</div>' if gagnante == "B" else ""
 
-                    score_a = r.get("score_a", "?")
-                    score_b = r.get("score_b", "?")
+                    score_a = _safe(r.get("score_a", "?"))
+                    score_b = _safe(r.get("score_b", "?"))
 
                     # Construction HTML propre sans guillemets imbriqués
                     html_scores = (
@@ -1878,7 +1939,7 @@ if has_a:
                     )
                     st.markdown(html_scores, unsafe_allow_html=True)
 
-                    # Descriptions A et B
+                    # Descriptions A et B (sanitisées)
                     if r.get("desc_a"):
                         label_genre = r.get("genre", "neutre")
                         symbole_genre = "♂" if label_genre == "masculin" else ("♀" if label_genre == "feminin" else "◈")
@@ -1889,11 +1950,11 @@ if has_a:
                         st.markdown(
                             f'<div class="desc-card">'
                             f'<div class="desc-card-header">Tenue A — détail{badge_html}</div>'
-                            f'<div class="desc-card-body">{r["desc_a"]}</div>'
+                            f'<div class="desc-card-body">{_safe(r["desc_a"])}</div>'
                             f'</div>'
                             f'<div class="desc-card" style="margin-top:0.5rem">'
                             f'<div class="desc-card-header">Tenue B — détail</div>'
-                            f'<div class="desc-card-body">{r["desc_b"]}</div>'
+                            f'<div class="desc-card-body">{_safe(r["desc_b"])}</div>'
                             f'</div>',
                             unsafe_allow_html=True,
                         )
@@ -1910,8 +1971,8 @@ if has_a:
                             f'<div class="affil-emoji">{prod["emoji"]}</div>'
                             '<div class="affil-body">'
                             '<div class="affil-header">Notre sélection</div>'
-                            f'<div class="affil-name">{prod["name"]}</div>'
-                            f'<div class="affil-tagline">{prod["tagline"]}</div>'
+                            f'<div class="affil-name">{_safe(prod["name"])}</div>'
+                            f'<div class="affil-tagline">{_safe(prod["tagline"])}</div>'
                             '</div>'
                             '<div class="affil-cta">Voir →</div>'
                             '</a>'
@@ -1924,7 +1985,7 @@ if has_a:
                     image_story = image_a if gagnante == "A" else (image_b or image_a)
                     score_story = score_a if gagnante == "A" else score_b
                     titre_story = f"Tenue {gagnante} recommandée"
-                    story_bytes = generer_story(image_story, score_story, titre_story, r["analyse"])
+                    story_bytes = generer_story(image_story, r.get("score_a" if gagnante == "A" else "score_b", "?"), titre_story, r["analyse"])
                     st.download_button(
                         label="📲 Télécharger ma Story Instagram / TikTok",
                         data=story_bytes,
@@ -1933,12 +1994,12 @@ if has_a:
                         key="dl_story_dilemme",
                     )
 
-                # ── MODE DRIP (analyse classique) ──────────────────────────
-                elif r.get("mode") in ("drip", None) and not is_roast:
-
-                    # Consommation crédit (uniquement si succès)
+                    # ✅ Consommation crédit APRÈS affichage réussi (pas si erreur visibilité)
                     if not is_roast:
                         incrementer_compteur()
+
+                # ── MODE DRIP (analyse classique) ──────────────────────────
+                elif r.get("mode") in ("drip", None) and not is_roast:
 
                     # Badge occasion
                     st.markdown(
@@ -1947,7 +2008,7 @@ if has_a:
                         unsafe_allow_html=True,
                     )
 
-                    # Card description
+                    # Card description (sanitisée)
                     if r.get("description"):
                         label_genre = r.get("genre", "neutre")
                         symbole_genre = "♂" if label_genre == "masculin" else ("♀" if label_genre == "feminin" else "◈")
@@ -1958,15 +2019,15 @@ if has_a:
                         st.markdown(
                             f'<div class="desc-card">'
                             f'<div class="desc-card-header">Ce que l\'IA voit{badge_html}</div>'
-                            f'<div class="desc-card-body">{r["description"]}</div>'
+                            f'<div class="desc-card-body">{_safe(r["description"])}</div>'
                             f'</div>',
                             unsafe_allow_html=True,
                         )
 
-                    # Score
+                    # Score (sanitisé)
                     st.markdown(
                         f'<div class="score-block">'
-                        f'<div class="score-number">{r["score"]}</div>'
+                        f'<div class="score-number">{_safe(r["score"])}</div>'
                         f'<div class="score-label">Score de style</div>'
                         f'</div>',
                         unsafe_allow_html=True,
@@ -1978,7 +2039,7 @@ if has_a:
                         corps += f"\n\n💡 *{r['conseil']}*"
                     st.success(corps)
 
-                    # Card affiliation
+                    # Card affiliation (sanitisée)
                     if r.get("accessoire") and r["accessoire"] in AFFILIATE_CATALOG:
                         prod = AFFILIATE_CATALOG[r["accessoire"]]
                         affil_html = (
@@ -1987,8 +2048,8 @@ if has_a:
                             f'<div class="affil-emoji">{prod["emoji"]}</div>'
                             '<div class="affil-body">'
                             '<div class="affil-header">Notre sélection</div>'
-                            f'<div class="affil-name">{prod["name"]}</div>'
-                            f'<div class="affil-tagline">{prod["tagline"]}</div>'
+                            f'<div class="affil-name">{_safe(prod["name"])}</div>'
+                            f'<div class="affil-tagline">{_safe(prod["tagline"])}</div>'
                             '</div>'
                             '<div class="affil-cta">Voir →</div>'
                             '</a>'
@@ -2011,12 +2072,11 @@ if has_a:
                         key="dl_story_drip",
                     )
 
+                    # ✅ Consommation crédit APRÈS affichage réussi
+                    incrementer_compteur()
+
                 # ── MODE ROAST ─────────────────────────────────────────────
                 else:
-
-                    # Consommation crédit Roast (uniquement si succès)
-                    if is_roast and st.session_state.a_paye:
-                        st.session_state.a_paye = False
 
                     # Badge occasion
                     st.markdown(
@@ -2025,7 +2085,7 @@ if has_a:
                         unsafe_allow_html=True,
                     )
 
-                    # Description (ton sarcastique)
+                    # Description (ton sarcastique, sanitisée)
                     if r.get("description"):
                         label_genre = r.get("genre", "neutre")
                         symbole_genre = "♂" if label_genre == "masculin" else ("♀" if label_genre == "feminin" else "◈")
@@ -2036,15 +2096,15 @@ if has_a:
                         st.markdown(
                             f'<div class="desc-card">'
                             f'<div class="desc-card-header">Ce que l\'IA voit{badge_html}</div>'
-                            f'<div class="desc-card-body">{r["description"]}</div>'
+                            f'<div class="desc-card-body">{_safe(r["description"])}</div>'
                             f'</div>',
                             unsafe_allow_html=True,
                         )
 
-                    # Score
+                    # Score (sanitisé)
                     st.markdown(
                         f'<div class="score-block">'
-                        f'<div class="score-number">{r["score"]}</div>'
+                        f'<div class="score-number">{_safe(r["score"])}</div>'
                         f'<div class="score-label">Score de style</div>'
                         f'</div>',
                         unsafe_allow_html=True,
@@ -2056,6 +2116,10 @@ if has_a:
                         corps += f"\n\n*{r['conseil']}*"
                     st.error(corps)
 
+                    # ✅ Consommation crédit Roast APRÈS affichage réussi
+                    if is_roast and st.session_state.a_paye:
+                        st.session_state.a_paye = False
+
                     # Pas de Story pour le mode Roast (le contenu est payant)
 
                 # ── CoT expander (tous modes) ──────────────────────────────
@@ -2066,7 +2130,8 @@ if has_a:
             except Exception as e:
                 st.error(
                     "Une erreur est survenue lors de la connexion à l'IA. "
-                    "Vérifiez que votre compte OpenAI dispose bien de crédit."
+                    "Vérifiez que votre compte OpenAI dispose bien de crédit, "
+                    "ou réessayez dans quelques instants si l'API est temporairement surchargée."
                 )
 
 
