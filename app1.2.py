@@ -99,117 +99,82 @@ SITUATIONS = [
 
 SITUATION_LABELS = [f"{s['emoji']} {s['label']}" for s in SITUATIONS]
 
-AFFILIATE_CATALOG = {
-    # ── Bijoux & accessoires ─────────────────────────────────────────────────
-    "bague_chunky": {
-        "name": "Bague chunky statement",
-        "emoji": "◈",
-        "tagline": "Le détail qui parle avant toi",
-        "affiliate_url": "https://www.example.com/bague-chunky?ref=monstyliste",
+# ══════════════════════════════════════════════════════════════════════════════
+#  CATALOGUE AFFILIÉ — Chargement dynamique depuis Google Sheets
+#  Le sheet doit être public (partage "Tout le monde avec le lien")
+#  Colonnes attendues : id, name, emoji, tagline, url
+# ══════════════════════════════════════════════════════════════════════════════
+
+_GSHEET_ID = "https://docs.google.com/spreadsheets/d/1h5G7eioCNAZYNGU-kWWxgq-z0iQAyJBZnHOTBsW2yaM/edit?usp=sharing"  # ← Remplace par ton vrai Sheet ID
+_GSHEET_CSV_URL = (
+    f"https://docs.google.com/spreadsheets/d/{_GSHEET_ID}"
+    "/export?format=csv&gid=0"
+)
+
+_AFFILIATE_CATALOG_FALLBACK = {
+    "casquette_carhartt": {
+        "name": "Casquette Carhartt Homme",
+        "emoji": "🧢",
+        "tagline": "La touche workwear décontractée qui structure instantanément le visage",
+        "affiliate_url": "https://amzn.to/42Ouhrf",
     },
-    "collier_perles_y2k": {
-        "name": "Collier de perles Y2K",
-        "emoji": "✦",
-        "tagline": "Coucou 2003, ravie de te revoir",
-        "affiliate_url": "https://www.example.com/collier-perles?ref=monstyliste",
-    },
-    "bracelet_manchette": {
-        "name": "Bracelet manchette doré",
-        "emoji": "◯",
-        "tagline": "Une pièce, tout le caractère",
-        "affiliate_url": "https://www.example.com/manchette?ref=monstyliste",
-    },
-    # ── Lunettes ─────────────────────────────────────────────────────────────
-    "lunettes_y2k": {
-        "name": "Lunettes teintées Y2K",
-        "emoji": "◉",
-        "tagline": "Le filtre soleil qui clôt tout débat",
-        "affiliate_url": "https://www.example.com/lunettes-y2k?ref=monstyliste",
-    },
-    "lunettes_cat_eye": {
-        "name": "Lunettes cat-eye vintage",
-        "emoji": "◉",
-        "tagline": "Drama facial instantané",
-        "affiliate_url": "https://www.example.com/cat-eye?ref=monstyliste",
-    },
-    # ── Chaussures ───────────────────────────────────────────────────────────
-    "sneakers_vintage": {
-        "name": "Sneakers running vintage",
-        "emoji": "△",
-        "tagline": "La base qui élève tout le reste",
-        "affiliate_url": "https://www.example.com/sneakers-vintage?ref=monstyliste",
-    },
-    "mary_janes": {
-        "name": "Mary Janes chunky",
-        "emoji": "△",
-        "tagline": "Douceur en dessous, impact au-dessus",
-        "affiliate_url": "https://www.example.com/mary-janes?ref=monstyliste",
-    },
-    "boots_chelsea": {
-        "name": "Chelsea boots cuir",
-        "emoji": "△",
-        "tagline": "La chaussure qui structure une silhouette",
-        "affiliate_url": "https://www.example.com/chelsea-boots?ref=monstyliste",
-    },
-    # ── Vestes & couches ─────────────────────────────────────────────────────
-    "veste_gorpcore": {
-        "name": "Veste Gorpcore technique",
-        "emoji": "□",
-        "tagline": "Quand la randonnée devient un esthétique",
-        "affiliate_url": "https://www.example.com/veste-gorpcore?ref=monstyliste",
-    },
-    "veste_oversize": {
-        "name": "Veste blazer oversize",
-        "emoji": "□",
-        "tagline": "La pièce qui structure toute la silhouette",
-        "affiliate_url": "https://www.example.com/veste-oversize?ref=monstyliste",
-    },
-    "cardigan_knit": {
-        "name": "Cardigan knit texturé",
-        "emoji": "□",
-        "tagline": "Le confort qui n'abandonne pas le style",
-        "affiliate_url": "https://www.example.com/cardigan-knit?ref=monstyliste",
-    },
-    # ── Sacs ─────────────────────────────────────────────────────────────────
-    "sac_hobo": {
-        "name": "Sac hobo en cuir souple",
-        "emoji": "◇",
-        "tagline": "Structure molle, impact maximal",
-        "affiliate_url": "https://www.example.com/sac-hobo?ref=monstyliste",
-    },
-    "micro_bag": {
-        "name": "Micro bag minimaliste",
-        "emoji": "◇",
-        "tagline": "Moins c'est plus — surtout ici",
-        "affiliate_url": "https://www.example.com/micro-bag?ref=monstyliste",
-    },
-    "sac_tote_canvas": {
-        "name": "Tote bag canvas premium",
-        "emoji": "◇",
-        "tagline": "Sobre, utile et infiniment stylé",
-        "affiliate_url": "https://www.example.com/tote-canvas?ref=monstyliste",
-    },
-    # ── Headwear & divers ─────────────────────────────────────────────────────
-    "casquette_trucker": {
-        "name": "Casquette trucker rétro",
-        "emoji": "△",
-        "tagline": "Un clin d'œil qui change tout",
-        "affiliate_url": "https://www.example.com/trucker-cap?ref=monstyliste",
-    },
-    "bandeau_satin": {
-        "name": "Bandeau satin imprimé",
-        "emoji": "✦",
-        "tagline": "Mini accessoire, maxi effet",
-        "affiliate_url": "https://www.example.com/bandeau-satin?ref=monstyliste",
-    },
-    "ceinture_large": {
-        "name": "Ceinture large à boucle dorée",
-        "emoji": "◈",
-        "tagline": "Définit la taille, redéfinit la tenue",
-        "affiliate_url": "https://www.example.com/ceinture-large?ref=monstyliste",
+    "montre_casio": {
+        "name": "Montre acier vintage",
+        "emoji": "⌚",
+        "tagline": "Le classique intemporel qui structure le poignet pour une tenue qui manque d'accessoires",
+        "affiliate_url": "https://amzn.to/4tcGssT",
     },
 }
 
+@st.cache_data(ttl=600)  # Rafraîchissement toutes les 10 minutes
+def _load_affiliate_catalog() -> dict:
+    """
+    Charge le catalogue affilié depuis un Google Sheets public (export CSV).
+    Cache Streamlit de 10 min pour limiter les requêtes réseau.
+    En cas d'échec (sheet inaccessible, colonnes manquantes, etc.),
+    retourne un mini-catalogue de secours pour éviter tout crash.
+    """
+    import pandas as pd
+
+    try:
+        df = pd.read_csv(_GSHEET_CSV_URL, dtype=str).fillna("")
+
+        # Validation des colonnes requises
+        required_cols = {"id", "name", "emoji", "tagline", "url"}
+        missing = required_cols - set(df.columns.str.strip().str.lower())
+        if missing:
+            raise ValueError(f"Colonnes manquantes dans le Google Sheet : {missing}")
+
+        # Normalisation des noms de colonnes (strip whitespace, lowercase)
+        df.columns = df.columns.str.strip().str.lower()
+
+        catalog = {}
+        for _, row in df.iterrows():
+            key = str(row["id"]).strip()
+            if not key:
+                continue  # Ignorer les lignes sans id
+            catalog[key] = {
+                "name": str(row["name"]).strip(),
+                "emoji": str(row["emoji"]).strip() or "✦",
+                "tagline": str(row["tagline"]).strip(),
+                "affiliate_url": str(row["url"]).strip(),
+            }
+
+        if not catalog:
+            raise ValueError("Le Google Sheet est vide ou ne contient aucune ligne valide.")
+
+        return catalog
+
+    except Exception as _err:
+        # Fallback silencieux : l'appli continue avec le mini-catalogue
+        # Uncomment la ligne suivante pour debugger en dev :
+        # st.warning(f"⚠️ Catalogue Google Sheets inaccessible ({_err}) — catalogue de secours actif.")
+        return _AFFILIATE_CATALOG_FALLBACK
+
+
+AFFILIATE_CATALOG = _load_affiliate_catalog()
+
+# Variables dérivées — reconstruites dynamiquement depuis le catalogue chargé
 _CATALOG_LINES = "\n".join(
     f"  - {k} → {v['name']}" for k, v in AFFILIATE_CATALOG.items()
 )
